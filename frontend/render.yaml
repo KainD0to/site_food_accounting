@@ -1,0 +1,11 @@
+staticSites:
+  - name: food-accounting
+    type: static
+    plan: free
+    buildCommand: npm run build
+    publishPath: ./build
+    envVars:
+      - key: REACT_APP_API_URL
+        value: https://food-accounting.onrender.com
+      - key: REACT_APP_NAME
+        value: "School App Production"
