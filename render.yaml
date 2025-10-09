@@ -2,7 +2,7 @@ staticSites:
   - name: site_food_accounting-frontend
     type: static
     plan: free
-    buildCommand: cd frontend && npm install && npm run build
+    buildCommand: cd frontend && npm install && CI=false GENERATE_SOURCEMAP=false npm run build
     publishPath: ./frontend/build
     envVars:
       - key: REACT_APP_API_URL
