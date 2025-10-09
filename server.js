@@ -1,13 +1,14 @@
 import express from 'express';
 import pkg from 'pg';
 import cors from 'cors';
-import dotenv from 'dotenv';
-
-// Загружаем переменные из .env файла
-dotenv.config();
 
 const { Pool } = pkg;
 const app = express();
+
+// Проверяем переменные окружения
+console.log('🔐 DB_HOST:', process.env.DB_HOST);
+console.log('🌐 NODE_ENV:', process.env.NODE_ENV);
+console.log('🔗 FRONTEND_URL:', process.env.FRONTEND_URL);
 
 // Настройки CORS для production
 app.use(cors({
@@ -19,25 +20,36 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// Проверяем что переменные загрузились
-console.log('🔐 DATABASE_URL:', process.env.DATABASE_URL ? 'загружен' : 'не загружен');
-console.log('🌐 NODE_ENV:', process.env.NODE_ENV);
-console.log('🔗 FRONTEND_URL:', process.env.FRONTEND_URL);
-
-// Подключение к PostgreSQL - ДЛЯ RENDER ИСПОЛЬЗУЕМ DATABASE_URL
-const poolConfig = process.env.DATABASE_URL 
+// Подключение к PostgreSQL - для Render используем отдельные параметры
+const poolConfig = process.env.DB_HOST 
   ? {
-      connectionString: process.env.DATABASE_URL,
+      // Для Render с отдельными параметрами
+      host: process.env.DB_HOST,
+      port: process.env.DB_PORT || 5432,
+      user: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+      database: process.env.DB_NAME,
       ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
     }
+  : process.env.DATABASE_URL 
+  ? {
+      // Для Render с DATABASE_URL
+      connectionString: process.env.DATABASE_URL,
+      ssl: { rejectUnauthorized: false }
+    }
   : {
-      // Локальная разработка
+      // Для локальной разработки
       user: 'postgres',
       host: 'localhost',
-      database: 'food-accounting-db',
+      database: 'food-accounting-db', 
       password: process.env.DB_PASSWORD,
       port: 5432,
     };
+
+console.log('🔧 Конфиг БД:', {
+  host: poolConfig.host || 'from DATABASE_URL',
+  database: poolConfig.database || 'from DATABASE_URL'
+});
 
 const pool = new Pool(poolConfig);
 
@@ -54,21 +66,10 @@ pool.on('error', (err) => {
 app.get('/api/health', async (req, res) => {
   try {
     await pool.query('SELECT 1');
-    
-    // Дополнительная проверка - посчитаем записи в таблицах
-    const adminCount = await pool.query('SELECT COUNT(*) FROM admin');
-    const parentsCount = await pool.query('SELECT COUNT(*) FROM parents');
-    const studentsCount = await pool.query('SELECT COUNT(*) FROM students');
-    
     res.json({ 
       status: 'OK', 
       database: 'connected',
-      environment: process.env.NODE_ENV || 'development',
-      tables: {
-        admin: parseInt(adminCount.rows[0].count),
-        parents: parseInt(parentsCount.rows[0].count),
-        students: parseInt(studentsCount.rows[0].count)
-      },
+      environment: process.env.NODE_ENV,
       timestamp: new Date().toISOString()
     });
   } catch (error) {
@@ -77,8 +78,7 @@ app.get('/api/health', async (req, res) => {
       status: 'Error', 
       database: 'disconnected',
       error: error.message,
-      environment: process.env.NODE_ENV || 'development',
-      timestamp: new Date().toISOString()
+      environment: process.env.NODE_ENV
     });
   }
 });
