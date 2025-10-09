@@ -27,4 +27,4 @@ services:
       - key: JWT_SECRET
         generateValue: true
       - key: FRONTEND_URL
-        value: https://site-food-accounting-frontend.onrender.coms
+        value: https://site-food-accounting-frontend.onrender.com
