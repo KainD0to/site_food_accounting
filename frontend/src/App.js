@@ -525,6 +525,10 @@ function App() {
     setLoading(false);
   }, []);
 
+  const API_BASE = process.env.NODE_ENV === 'production' 
+  ? 'https://site-food-accounting-backend.onrender.com/api'
+  : '/api';
+
   const handleLogin = (userData, token) => {
     setUser(userData);
     localStorage.setItem('token', token);

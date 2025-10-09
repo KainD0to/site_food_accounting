@@ -1,11 +1,11 @@
 staticSites:
-  - name: food-accounting-frontend
+  - name: site_food_accounting-frontend
     type: static
     plan: free
     buildCommand: npm run build
     publishPath: ./build
     envVars:
       - key: REACT_APP_API_URL
-        value: https://food-accounting-backend.onrender.com
+        value: https://site-food-accounting-backend.onrender.com  # ← ДЕФИСЫ!
       - key: REACT_APP_NAME
         value: "School Food Accounting"

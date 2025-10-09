@@ -1,7 +1,7 @@
 {
   "name": "food-accounting-frontend",
   "version": "0.1.0",
-  "private": true,
+  "homepage": "https://site-food-accounting-frontend.onrender.com",
   "dependencies": {
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
@@ -30,5 +30,5 @@
       "last 1 safari version"
     ]
   },
-  "proxy": "http://localhost:5000"
+  "proxy": "https://site-food-accounting-backend.onrender.com"
 }
