@@ -15,8 +15,8 @@ services:
     name: site_food_accounting-backend
     env: node
     plan: free
-    buildCommand: cd backend && npm install
-    startCommand: cd backend && node server.js
+    buildCommand: npm install
+    startCommand: npm start
     envVars:
       - key: NODE_ENV
         value: production
@@ -24,3 +24,7 @@ services:
         fromDatabase:
           name: food-accounting-db
           property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: FRONTEND_URL
+        value: https://site-food-accounting-frontend.onrender.com
