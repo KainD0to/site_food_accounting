@@ -1,45 +1,45 @@
 import express from 'express';
 import pkg from 'pg';
 import cors from 'cors';
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
-import 'dotenv/config';
+import dotenv from 'dotenv';
+
+// Загружаем переменные из .env файла
+dotenv.config();
 
 const { Pool } = pkg;
 const app = express();
 
-// Middleware
-app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-  credentials: true
-}));
+app.use(cors());
 app.use(express.json());
 
-// Подключение к PostgreSQL
+// Проверяем что переменные загрузились
+console.log('🔐 Загружен пароль из .env:', process.env.DB_PASSWORD ? '***' + process.env.DB_PASSWORD.slice(-2) : 'НЕ ЗАГРУЖЕН');
+console.log('📁 DATABASE_URL:', process.env.DATABASE_URL ? 'загружен' : 'не загружен');
+
+// Используем пароль из .env
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || `postgresql://${process.env.DB_USER}:${process.env.DB_PASSWORD}@${process.env.DB_HOST}:${process.env.DB_PORT}/${process.env.DB_NAME}`,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+  user: 'postgres',
+  host: 'localhost',
+  database: 'food-accounting-db',
+  password: process.env.DB_PASSWORD, // из .env файла
+  port: 5432,
 });
 
-// Проверка подключения к БД
-const checkDatabaseConnection = async () => {
-  try {
-    await pool.query('SELECT 1');
-    console.log('✅ Успешное подключение к PostgreSQL');
-    
-    // Проверим что таблицы существуют
-    const result = await pool.query(`
-      SELECT table_name 
-      FROM information_schema.tables 
-      WHERE table_schema = 'public'
-    `);
-    console.log('📊 Таблицы в базе:', result.rows.map(row => row.table_name));
-  } catch (error) {
-    console.error('❌ Ошибка подключения к БД:', error);
-  }
-};
+// Или используем DATABASE_URL если он есть
+// const pool = new Pool({
+//   connectionString: process.env.DATABASE_URL,
+// });
 
-// API маршруты
+// Проверка подключения при старте
+pool.on('connect', () => {
+  console.log('✅ Подключение к PostgreSQL установлено');
+});
+
+pool.on('error', (err) => {
+  console.error('❌ Ошибка PostgreSQL:', err);
+});
+
+// Health check
 app.get('/api/health', async (req, res) => {
   try {
     await pool.query('SELECT 1');
@@ -49,6 +49,7 @@ app.get('/api/health', async (req, res) => {
       timestamp: new Date().toISOString()
     });
   } catch (error) {
+    console.error('Health check error:', error.message);
     res.status(500).json({ 
       status: 'Error', 
       database: 'disconnected',
@@ -57,95 +58,211 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
-// Получить всех учеников
-app.get('/api/students', async (req, res) => {
-  try {
-    const result = await pool.query('SELECT * FROM students ORDER BY created_at DESC');
-    res.json(result.rows);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Создать ученика
-app.post('/api/students', async (req, res) => {
-  try {
-    const { student_code, full_name, class: studentClass, phone } = req.body;
-    
-    const result = await pool.query(
-      'INSERT INTO students (student_code, full_name, class, phone) VALUES ($1, $2, $3, $4) RETURNING *',
-      [student_code, full_name, studentClass, phone]
-    );
-    
-    res.json({ message: 'Ученик создан', student: result.rows[0] });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Получить всех родителей
-app.get('/api/parents', async (req, res) => {
-  try {
-    const result = await pool.query('SELECT * FROM parents ORDER BY created_at DESC');
-    res.json(result.rows);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Получить связи родитель-ученик
-app.get('/api/parent-student', async (req, res) => {
-  try {
-    const result = await pool.query(`
-      SELECT ps.*, p.full_name as parent_name, s.full_name as student_name
-      FROM parent_student ps
-      JOIN parents p ON ps.parent_id = p.id
-      JOIN students s ON ps.student_id = s.id
-    `);
-    res.json(result.rows);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
 // Аутентификация администратора
-app.post('/api/auth/admin/login', async (req, res) => {
+app.post('/api/admin/login', async (req, res) => {
   try {
-    const { username, password } = req.body;
-    
-    const result = await pool.query('SELECT * FROM admins WHERE username = $1', [username]);
+    const { full_name, password } = req.body;
+    console.log('🔑 Попытка входа админа:', full_name);
+
+    const result = await pool.query(
+      'SELECT * FROM admin WHERE full_name = $1',
+      [full_name]
+    );
+
     if (result.rows.length === 0) {
-      return res.status(401).json({ error: 'Неверные учетные данные' });
+      return res.status(401).json({ error: 'Администратор не найден' });
     }
 
     const admin = result.rows[0];
-    const isValidPassword = await bcrypt.compare(password, admin.password_hash);
     
-    if (!isValidPassword) {
-      return res.status(401).json({ error: 'Неверные учетные данные' });
+    if (password !== admin.password) {
+      return res.status(401).json({ error: 'Неверный пароль' });
     }
 
-    const token = jwt.sign(
-      { userId: admin.id, userType: 'admin' }, 
-      process.env.JWT_SECRET || 'fallback-secret',
-      { expiresIn: '24h' }
-    );
+    const token = 'admin-token-' + admin.id;
 
-    res.json({ 
-      message: 'Успешный вход', 
+    res.json({
+      message: 'Успешный вход',
       token,
-      user: { id: admin.id, username: admin.username, full_name: admin.full_name }
+      user: {
+        id: admin.id,
+        full_name: admin.full_name,
+        role: 'admin'
+      }
     });
   } catch (error) {
+    console.error('Admin login error:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, async () => {
+// Аутентификация родителя
+app.post('/api/parent/login', async (req, res) => {
+  try {
+    const { full_name, password } = req.body;
+    console.log('🔑 Попытка входа родителя:', full_name);
+
+    const result = await pool.query(
+      'SELECT * FROM parents WHERE full_name = $1',
+      [full_name]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(401).json({ error: 'Родитель не найден' });
+    }
+
+    const parent = result.rows[0];
+    
+    if (password !== parent.password) {
+      return res.status(401).json({ error: 'Неверный пароль' });
+    }
+
+    const token = 'parent-token-' + parent.id;
+
+    res.json({
+      message: 'Успешный вход',
+      token,
+      user: {
+        id: parent.id,
+        full_name: parent.full_name,
+        role: 'parent'
+      }
+    });
+  } catch (error) {
+    console.error('Parent login error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Получить всех студентов (только для админа)
+app.get('/api/students', async (req, res) => {
+  try {
+    const token = req.headers.authorization;
+    console.log('🔐 Token для студентов:', token);
+    
+    if (!token || !token.includes('admin-token')) {
+      return res.status(403).json({ error: 'Доступ запрещен' });
+    }
+
+    console.log('📋 Запрос всех студентов...');
+    
+    const result = await pool.query(`
+      SELECT s.*, p.full_name as parent_name,
+      (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE student_id = s.id) as balance
+      FROM students s 
+      LEFT JOIN parents p ON s.parent_id = p.id 
+      ORDER BY s.full_name
+    `);
+    
+    console.log(`✅ Найдено студентов: ${result.rows.length}`);
+    console.log('📊 Студенты:', result.rows);
+    
+    res.json(result.rows);
+  } catch (error) {
+    console.error('❌ Ошибка загрузки студентов:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Получить студентов родителя
+app.get('/api/parent/students', async (req, res) => {
+  try {
+    const token = req.headers.authorization;
+    console.log('🔐 Token для родителя:', token);
+    
+    if (!token || !token.includes('parent-token')) {
+      return res.status(403).json({ error: 'Доступ запрещен' });
+    }
+
+    // Извлекаем parent_id из токена (parent-token-1 → 1)
+    const parentId = parseInt(token.split('-').pop());
+    console.log(`👨‍👦 Запрос студентов для родителя ID: ${parentId}`);
+    
+    const result = await pool.query(`
+      SELECT s.*,
+      (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE student_id = s.id) as balance
+      FROM students s 
+      WHERE s.parent_id = $1
+      ORDER BY s.full_name
+    `, [parentId]);
+    
+    console.log(`✅ Найдено студентов у родителя: ${result.rows.length}`);
+    console.log('📊 Студенты родителя:', result.rows);
+    
+    res.json(result.rows);
+  } catch (error) {
+    console.error('❌ Ошибка загрузки студентов родителя:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Получить платежи студента
+app.get('/api/students/:id/payments', async (req, res) => {
+  try {
+    const studentId = req.params.id;
+    const token = req.headers.authorization;
+    
+    console.log(`💰 Запрос платежей студента ID: ${studentId}`);
+    
+    // Проверка прав доступа для родителя
+    if (token && token.includes('parent-token')) {
+      const parentId = parseInt(token.split('-').pop());
+      const studentCheck = await pool.query(
+        'SELECT * FROM students WHERE id = $1 AND parent_id = $2',
+        [studentId, parentId]
+      );
+      
+      if (studentCheck.rows.length === 0) {
+        return res.status(403).json({ error: 'Доступ запрещен' });
+      }
+    }
+
+    const result = await pool.query(
+      'SELECT * FROM payments WHERE student_id = $1 ORDER BY payment_date DESC, created_at DESC',
+      [studentId]
+    );
+
+    console.log(`✅ Найдено платежей: ${result.rows.length}`);
+    
+    res.json(result.rows);
+  } catch (error) {
+    console.error('❌ Ошибка загрузки платежей:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Добавить платеж (только для администратора)
+app.post('/api/payments', async (req, res) => {
+  try {
+    const token = req.headers.authorization;
+    
+    if (!token || !token.includes('admin-token')) {
+      return res.status(403).json({ error: 'Доступ запрещен' });
+    }
+
+    const { student_id, payment_date, amount, description } = req.body;
+    
+    console.log('➕ Добавление платежа:', { student_id, amount, description });
+
+    const result = await pool.query(
+      `INSERT INTO payments (student_id, payment_date, amount, description, created_by) 
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [student_id, payment_date, amount, description, 1] // created_by = 1 (админ)
+    );
+
+    console.log('✅ Платеж добавлен:', result.rows[0]);
+    
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('❌ Ошибка добавления платежа:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+const PORT = 5000;
+app.listen(PORT, () => {
+  console.log('='.repeat(50));
   console.log(`🚀 Сервер запущен на порту ${PORT}`);
-  console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
-  
-  // Просто проверяем подключение, не создаем таблицы
-  await checkDatabaseConnection();
+  console.log(`🔐 Пароль из .env: ${process.env.DB_PASSWORD ? '***' + process.env.DB_PASSWORD.slice(-2) : 'НЕ ЗАГРУЖЕН'}`);
+  console.log('='.repeat(50));
 });
