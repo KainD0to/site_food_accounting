@@ -1,0 +1,8 @@
+{
+  "name": "food-accounting-root",
+  "version": "1.0.0",
+  "scripts": {
+    "install-backend": "cd backend && npm install",
+    "start-backend": "cd backend && node server.js"
+  }
+}
