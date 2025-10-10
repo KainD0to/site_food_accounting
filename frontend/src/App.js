@@ -201,67 +201,67 @@ function AdminDashboard({ user, onLogout, onNotification }) {
   }, []);
 
   const fetchStudents = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      const response = await fetch('/api/students', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      
-      if (!response.ok) throw new Error('Ошибка загрузки');
-      const data = await response.json();
-      setStudents(data);
-    } catch (error) {
-      onNotification('Ошибка загрузки студентов: ' + error.message, 'error');
-    }
-  };
+  try {
+    const token = localStorage.getItem('token');
+    const response = await fetch(`${API_BASE}/api/students`, {  // ← ДОБАВЬТЕ API_BASE
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    
+    if (!response.ok) throw new Error('Ошибка загрузки');
+    const data = await response.json();
+    setStudents(data);
+  } catch (error) {
+    onNotification('Ошибка загрузки студентов: ' + error.message, 'error');
+  }
+};
 
-  const fetchPayments = async (studentId) => {
-    try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`/api/students/${studentId}/payments`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      
-      if (!response.ok) throw new Error('Ошибка загрузки');
-      const data = await response.json();
-      setPayments(data);
-      setSelectedStudent(studentId);
-    } catch (error) {
-      onNotification('Ошибка загрузки платежей: ' + error.message, 'error');
-    }
-  };
+const fetchPayments = async (studentId) => {
+  try {
+    const token = localStorage.getItem('token');
+    const response = await fetch(`${API_BASE}/api/students/${studentId}/payments`, {  // ← ДОБАВЬТЕ API_BASE
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    
+    if (!response.ok) throw new Error('Ошибка загрузки');
+    const data = await response.json();
+    setPayments(data);
+    setSelectedStudent(studentId);
+  } catch (error) {
+    onNotification('Ошибка загрузки платежей: ' + error.message, 'error');
+  }
+};
 
-  const handleAddPayment = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      const response = await fetch('/api/payments', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          ...paymentData,
-          student_id: selectedStudent,
-          amount: parseFloat(paymentData.amount)
-        })
-      });
+const handleAddPayment = async () => {
+  try {
+    const token = localStorage.getItem('token');
+    const response = await fetch(`${API_BASE}/api/payments`, {  // ← ДОБАВЬТЕ API_BASE
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        ...paymentData,
+        student_id: selectedStudent,
+        amount: parseFloat(paymentData.amount)
+      })
+    });
 
-      if (!response.ok) throw new Error('Ошибка добавления');
-      
-      onNotification('Платеж успешно добавлен', 'success');
-      setPaymentDialogOpen(false);
-      setPaymentData({ amount: '', description: '', payment_date: new Date().toISOString().split('T')[0] });
-      fetchStudents();
-      if (selectedStudent) fetchPayments(selectedStudent);
-    } catch (error) {
-      onNotification('Ошибка добавления платежа: ' + error.message, 'error');
-    }
-  };
+    if (!response.ok) throw new Error('Ошибка добавления');
+    
+    onNotification('Платеж успешно добавлен', 'success');
+    setPaymentDialogOpen(false);
+    setPaymentData({ amount: '', description: '', payment_date: new Date().toISOString().split('T')[0] });
+    fetchStudents();
+    if (selectedStudent) fetchPayments(selectedStudent);
+  } catch (error) {
+    onNotification('Ошибка добавления платежа: ' + error.message, 'error');
+  }
+};
 
   return (
     <Box>
@@ -403,39 +403,39 @@ function ParentDashboard({ user, onLogout, onNotification }) {
   }, []);
 
   const fetchStudents = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      const response = await fetch('/api/parent/students', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      
-      if (!response.ok) throw new Error('Ошибка загрузки');
-      const data = await response.json();
-      setStudents(data);
-    } catch (error) {
-      onNotification('Ошибка загрузки данных: ' + error.message, 'error');
-    }
-  };
+  try {
+    const token = localStorage.getItem('token');
+    const response = await fetch(`${API_BASE}/api/parent/students`, {  // ← ДОБАВЬТЕ API_BASE
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    
+    if (!response.ok) throw new Error('Ошибка загрузки');
+    const data = await response.json();
+    setStudents(data);
+  } catch (error) {
+    onNotification('Ошибка загрузки данных: ' + error.message, 'error');
+  }
+};
 
-  const fetchPayments = async (studentId) => {
-    try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`/api/students/${studentId}/payments`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      
-      if (!response.ok) throw new Error('Ошибка загрузки');
-      const data = await response.json();
-      setPayments(data);
-      setSelectedStudent(studentId);
-    } catch (error) {
-      onNotification('Ошибка загрузки платежей: ' + error.message, 'error');
-    }
-  };
+const fetchPayments = async (studentId) => {
+  try {
+    const token = localStorage.getItem('token');
+    const response = await fetch(`${API_BASE}/api/students/${studentId}/payments`, {  // ← ДОБАВЬТЕ API_BASE
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    
+    if (!response.ok) throw new Error('Ошибка загрузки');
+    const data = await response.json();
+    setPayments(data);
+    setSelectedStudent(studentId);
+  } catch (error) {
+    onNotification('Ошибка загрузки платежей: ' + error.message, 'error');
+  }
+};
 
   return (
     <Box>
@@ -538,10 +538,6 @@ function App() {
     }
     setLoading(false);
   }, []);
-
-  const API_BASE = process.env.NODE_ENV === 'production' 
-  ? 'https://site-food-accounting-backend.onrender.com/api'
-  : '/api';
 
   const handleLogin = (userData, token) => {
     setUser(userData);
