@@ -50,37 +50,54 @@ function Login({ onLogin, onError }) {
   const [loginError, setLoginError] = useState('');
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoginError('');
+  e.preventDefault();
+  setLoginError('');
+  setLoading(true);
+  
+  try {
+    console.log('🚀 Отправка запроса на вход...');
     
-    try {
-      console.log('Sending login request:', formData);
-      
-      const response = await fetch(`/api/${formData.userType}/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          full_name: formData.full_name,
-          password: formData.password
-        })
-      });
+    const response = await fetch(`/api/${formData.userType}/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        full_name: formData.full_name,
+        password: formData.password
+      })
+    });
 
-      const data = await response.json();
-      console.log('Login response:', data);
+    console.log('📨 Ответ получен, статус:', response.status);
 
-      if (!response.ok) {
-        throw new Error(data.error || 'Ошибка входа');
-      }
+    // Проверяем что ответ не пустой
+    const responseText = await response.text();
+    console.log('📝 Текст ответа:', responseText);
 
-      onLogin(data.user, data.token);
-    } catch (error) {
-      const errorMessage = error.message || 'Ошибка входа';
-      setLoginError(errorMessage);
-      onError(errorMessage, 'error');
+    if (!responseText) {
+      throw new Error('Пустой ответ от сервера');
     }
-  };
+
+    // Парсим JSON только если есть содержимое
+    const data = JSON.parse(responseText);
+    console.log('📊 Данные ответа:', data);
+
+    if (!response.ok) {
+      throw new Error(data.error || `Ошибка: ${response.status}`);
+    }
+
+    console.log('✅ Успешный вход!');
+    onLogin(data.user, data.token);
+    
+  } catch (error) {
+    console.error('❌ Ошибка входа:', error);
+    const errorMessage = error.message || 'Ошибка соединения с сервером';
+    setLoginError(errorMessage);
+    onError(errorMessage, 'error');
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleAdminLogin = () => {
     setFormData({

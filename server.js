@@ -129,15 +129,27 @@ app.get('/api/test', (req, res) => {
 });
 
 // Аутентификация администратора - УПРОЩЕННАЯ ВЕРСИЯ
+// Аутентификация администратора - с улучшенной обработкой ошибок
 app.post('/api/admin/login', async (req, res) => {
+  console.log('🔑 ========== ПОПЫТКА ВХОДА АДМИНА ==========');
+  
   try {
+    console.log('📨 Тело запроса:', req.body);
+    
     const { full_name, password } = req.body;
-    console.log('🔑 Попытка входа админа:', full_name);
+    
+    if (!full_name || !password) {
+      console.log('❌ Отсутствуют логин или пароль');
+      return res.status(400).json({ error: 'Логин и пароль обязательны' });
+    }
 
-    // ПРОСТОЙ ТЕСТ - ВЕРНЕМ УСПЕШНЫЙ ОТВЕТ БЕЗ ПРОВЕРКИ БД
+    console.log(`🔐 Вход: ${full_name}, Пароль: ${password ? '***' : 'отсутствует'}`);
+
+    // ТЕСТОВЫЙ РЕЖИМ - всегда возвращаем успех для тестовых данных
     if (full_name === 'Тест админ' && password === '1357911Dan') {
+      console.log('✅ Успешный вход (тестовые данные)');
       return res.json({
-        message: 'Успешный вход (тестовый режим)',
+        message: 'Успешный вход',
         token: 'admin-token-1',
         user: {
           id: 1,
@@ -147,50 +159,73 @@ app.post('/api/admin/login', async (req, res) => {
       });
     }
 
-    // Если не тестовые данные, пробуем БД
-    const result = await pool.query(
-      'SELECT * FROM admin WHERE full_name = $1',
-      [full_name]
-    );
+    // Пробуем реальную БД если есть подключение
+    if (pool) {
+      console.log('🔍 Поиск в базе данных...');
+      const result = await pool.query(
+        'SELECT * FROM admin WHERE full_name = $1',
+        [full_name]
+      );
 
-    if (result.rows.length === 0) {
-      return res.status(401).json({ error: 'Администратор не найден' });
-    }
+      console.log(`📊 Найдено записей: ${result.rows.length}`);
 
-    const admin = result.rows[0];
-    
-    if (password !== admin.password) {
-      return res.status(401).json({ error: 'Неверный пароль' });
-    }
-
-    const token = 'admin-token-' + admin.id;
-
-    res.json({
-      message: 'Успешный вход',
-      token,
-      user: {
-        id: admin.id,
-        full_name: admin.full_name,
-        role: 'admin'
+      if (result.rows.length > 0) {
+        const admin = result.rows[0];
+        console.log('👤 Найден администратор:', admin);
+        
+        if (password === admin.password) {
+          console.log('✅ Пароль верный');
+          return res.json({
+            message: 'Успешный вход',
+            token: 'admin-token-' + admin.id,
+            user: {
+              id: admin.id,
+              full_name: admin.full_name,
+              role: 'admin'
+            }
+          });
+        } else {
+          console.log('❌ Неверный пароль');
+        }
+      } else {
+        console.log('❌ Администратор не найден');
       }
-    });
+    } else {
+      console.log('❌ База данных недоступна');
+    }
+
+    console.log('❌ Неверные учетные данные');
+    res.status(401).json({ error: 'Неверные учетные данные' });
+    
   } catch (error) {
-    console.error('Admin login error:', error);
-    // Даже при ошибке возвращаем валидный JSON
-    res.status(500).json({ error: 'Ошибка сервера' });
+    console.error('💥 Ошибка при входе:', error);
+    res.status(500).json({ 
+      error: 'Внутренняя ошибка сервера',
+      details: error.message 
+    });
   }
 });
 
-// Аутентификация родителя - УПРОЩЕННАЯ ВЕРСИЯ
+// Аналогично для родителя
 app.post('/api/parent/login', async (req, res) => {
+  console.log('🔑 ========== ПОПЫТКА ВХОДА РОДИТЕЛЯ ==========');
+  
   try {
+    console.log('📨 Тело запроса:', req.body);
+    
     const { full_name, password } = req.body;
-    console.log('🔑 Попытка входа родителя:', full_name);
+    
+    if (!full_name || !password) {
+      return res.status(400).json({ error: 'Логин и пароль обязательны' });
+    }
 
-    // ПРОСТОЙ ТЕСТ
+    console.log(`🔐 Вход: ${full_name}`);
+
+    // ТЕСТОВЫЙ РЕЖИМ
     if (full_name === 'Иванов Иван Иванович' && password === '123') {
+      console.log('✅ Успешный вход (тестовые данные)');
       return res.json({
-        message: 'Успешный вход (тестовый режим)',
+        message: 'Успешный вход',
         token: 'parent-token-1',
         user: {
           id: 1,
@@ -200,35 +235,41 @@ app.post('/api/parent/login', async (req, res) => {
       });
     }
 
-    const result = await pool.query(
-      'SELECT * FROM parents WHERE full_name = $1',
-      [full_name]
-    );
+    if (pool) {
+      console.log('🔍 Поиск в базе данных...');
+      const result = await pool.query(
+        'SELECT * FROM parents WHERE full_name = $1',
+        [full_name]
+      );
 
-    if (result.rows.length === 0) {
-      return res.status(401).json({ error: 'Родитель не найден' });
-    }
+      console.log(`📊 Найдено записей: ${result.rows.length}`);
 
-    const parent = result.rows[0];
-    
-    if (password !== parent.password) {
-      return res.status(401).json({ error: 'Неверный пароль' });
-    }
-
-    const token = 'parent-token-' + parent.id;
-
-    res.json({
-      message: 'Успешный вход',
-      token,
-      user: {
-        id: parent.id,
-        full_name: parent.full_name,
-        role: 'parent'
+      if (result.rows.length > 0) {
+        const parent = result.rows[0];
+        
+        if (password === parent.password) {
+          return res.json({
+            message: 'Успешный вход',
+            token: 'parent-token-' + parent.id,
+            user: {
+              id: parent.id,
+              full_name: parent.full_name,
+              role: 'parent'
+            }
+          });
+        }
       }
-    });
+    }
+
+    console.log('❌ Неверные учетные данные');
+    res.status(401).json({ error: 'Неверные учетные данные' });
+    
   } catch (error) {
-    console.error('Parent login error:', error);
-    res.status(500).json({ error: 'Ошибка сервера' });
+    console.error('💥 Ошибка при входе:', error);
+    res.status(500).json({ 
+      error: 'Внутренняя ошибка сервера',
+      details: error.message 
+    });
   }
 });
 
