@@ -27,6 +27,10 @@ import {
   Alert
 } from '@mui/material';
 
+const API_BASE = window.location.hostname === 'localhost' 
+  ? 'http://localhost:5000'
+  : 'https://site-food-accounting.onrender.com';
+
 // Тема Material-UI
 const theme = createTheme({
   palette: {
@@ -40,8 +44,6 @@ const theme = createTheme({
 });
 
 // Компонент входа
-// Компонент входа
-// Компонент входа
 function Login({ onLogin, onError }) {
   const [formData, setFormData] = useState({
     full_name: '',
@@ -53,13 +55,11 @@ function Login({ onLogin, onError }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setLoginError('');
-    setLoading(true);
     
     try {
       console.log('🚀 Отправка запроса на вход...');
       
-      const response = await fetch(`/api/${formData.userType}/login`, {
+      const response = await fetch(`${API_BASE}/api/${formData.userType}/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -69,35 +69,22 @@ function Login({ onLogin, onError }) {
           password: formData.password
         })
       });
-
+    
       console.log('📨 Ответ получен, статус:', response.status);
-
-      // Проверяем что ответ не пустой
-      const responseText = await response.text();
-      console.log('📝 Текст ответа:', responseText);
-
-      if (!responseText) {
-        throw new Error('Пустой ответ от сервера');
-      }
-
-      // Парсим JSON только если есть содержимое
-      const data = JSON.parse(responseText);
+    
+      const data = await response.json();
       console.log('📊 Данные ответа:', data);
-
+    
       if (!response.ok) {
         throw new Error(data.error || `Ошибка: ${response.status}`);
       }
-
+    
       console.log('✅ Успешный вход!');
       onLogin(data.user, data.token);
       
     } catch (error) {
       console.error('❌ Ошибка входа:', error);
-      const errorMessage = error.message || 'Ошибка соединения с сервером';
-      setLoginError(errorMessage);
-      onError(errorMessage, 'error');
-    } finally {
-      setLoading(false);
+      onError('Ошибка входа: ' + error.message, 'error');
     }
   };
 
