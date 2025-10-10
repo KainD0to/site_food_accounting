@@ -1,5 +1,7 @@
 {
-  "name": "food-accounting-backend",
+  "name": "food-accounting-frontend",
+  "homepage": "https://site-food-accounting-frontend.onrender.com",
+  "proxy": "https://site-food-accounting.onrender.com",
   "version": "1.0.0",
   "type": "module",
   "scripts": {
