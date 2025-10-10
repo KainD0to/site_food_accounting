@@ -426,6 +426,25 @@ app.get('/api/students/:id/balance', async (req, res) => {
   }
 });
 
+// Проверка данных в БД
+app.get('/api/debug/check-db', async (req, res) => {
+  try {
+    const adminCount = await pool.query('SELECT COUNT(*) FROM admin');
+    const parentsCount = await pool.query('SELECT COUNT(*) FROM parents');
+    const studentsCount = await pool.query('SELECT COUNT(*) FROM students');
+    const paymentsCount = await pool.query('SELECT COUNT(*) FROM payments');
+    
+    res.json({
+      admin: parseInt(adminCount.rows[0].count),
+      parents: parseInt(parentsCount.rows[0].count),
+      students: parseInt(studentsCount.rows[0].count),
+      payments: parseInt(paymentsCount.rows[0].count)
+    });
+  } catch (error) {
+    res.json({ error: error.message });
+  }
+});
+
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log('='.repeat(50));
