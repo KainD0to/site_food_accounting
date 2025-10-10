@@ -33,55 +33,168 @@ app.use(express.json());
 
 // ==================== БАЗА ДАННЫХ ====================
 
-// Проверяем переменные окружения
-console.log('🔐 DB_HOST:', process.env.DB_HOST);
-console.log('🌐 NODE_ENV:', process.env.NODE_ENV);
-console.log('🔗 FRONTEND_URL:', process.env.FRONTEND_URL);
-console.log('🔗 DATABASE_URL:', process.env.DATABASE_URL ? 'есть' : 'нет');
+console.log('🔧 Проверка переменных окружения:');
+console.log('📍 NODE_ENV:', process.env.NODE_ENV);
+console.log('🔗 DATABASE_URL:', process.env.DATABASE_URL ? 'ЕСТЬ' : 'НЕТ');
+console.log('🏠 DB_HOST:', process.env.DB_HOST || 'не указан');
+console.log('📁 DB_NAME:', process.env.DB_NAME || 'не указан');
+console.log('👤 DB_USER:', process.env.DB_USER || 'не указан');
+console.log('🔐 DB_PASSWORD:', process.env.DB_PASSWORD ? '***' : 'не указан');
 
-// Подключение к PostgreSQL - УПРОЩЕННАЯ ВЕРСИЯ
 let poolConfig;
 
 if (process.env.DATABASE_URL) {
-  // Для Render с DATABASE_URL
+  // Используем DATABASE_URL (основной способ на Render)
   poolConfig = {
     connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false }
+    ssl: {
+      rejectUnauthorized: false
+    }
   };
-  console.log('🔧 Используем DATABASE_URL от Render');
+  console.log('🎯 Используем DATABASE_URL');
+  
 } else if (process.env.DB_HOST) {
-  // Для Render с отдельными параметрами
+  // Используем отдельные параметры
   poolConfig = {
     host: process.env.DB_HOST,
     port: process.env.DB_PORT || 5432,
+    database: process.env.DB_NAME,
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME,
-    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+    ssl: {
+      rejectUnauthorized: false
+    }
   };
-  console.log('🔧 Используем отдельные параметры БД');
+  console.log('🎯 Используем отдельные параметры БД');
+  
 } else {
-  // Для локальной разработки
+  // Локальная разработка
   poolConfig = {
-    user: 'postgres',
     host: 'localhost',
-    database: 'food-accounting-db', 
-    password: process.env.DB_PASSWORD,
     port: 5432,
+    database: 'food-accounting-db',
+    user: 'postgres',
+    password: 'ваш_локальный_пароль' // замените на реальный
   };
-  console.log('🔧 Используем локальную БД');
+  console.log('🎯 Используем локальную БД (без SSL)');
 }
 
 const pool = new Pool(poolConfig);
 
-// Проверка подключения при старте
-pool.on('connect', () => {
-  console.log('✅ Подключение к PostgreSQL установлено');
-});
+// Тестируем подключение при старте
+async function testDatabaseConnection() {
+  let client;
+  try {
+    console.log('🔄 Тестируем подключение к БД...');
+    client = await pool.connect();
+    const result = await client.query('SELECT NOW() as current_time, version() as db_version');
+    console.log('✅ Подключение к БД УСПЕШНО');
+    console.log('⏰ Время БД:', result.rows[0].current_time);
+    console.log('📊 Версия:', result.rows[0].db_version.split('\n')[0]);
+    
+    return true;
+  } catch (error) {
+    console.error('❌ Ошибка подключения к БД:', error.message);
+    console.log('🔧 Конфиг подключения:', {
+      host: poolConfig.host,
+      database: poolConfig.database,
+      user: poolConfig.user,
+      port: poolConfig.port,
+      hasPassword: !!poolConfig.password,
+      hasSSL: !!poolConfig.ssl
+    });
+    return false;
+  } finally {
+    if (client) client.release();
+  }
+}
 
-pool.on('error', (err) => {
-  console.error('❌ Ошибка PostgreSQL:', err);
-});
+// Создаем таблицы если их нет
+async function initializeDatabase() {
+  let client;
+  try {
+    client = await pool.connect();
+    
+    // Проверяем существование таблиц
+    const tablesCheck = await client.query(`
+      SELECT table_name 
+      FROM information_schema.tables 
+      WHERE table_schema = 'public'
+      AND table_name IN ('admin', 'parents', 'students', 'payments')
+    `);
+    
+    console.log(`📊 Найдено таблиц: ${tablesCheck.rows.length}`);
+    
+    if (tablesCheck.rows.length === 0) {
+      console.log('🗃️ Создаем таблицы...');
+      
+      await client.query(`
+        CREATE TABLE admin (
+          id SERIAL PRIMARY KEY,
+          full_name VARCHAR(100) NOT NULL,
+          password VARCHAR(100) NOT NULL
+        )
+      `);
+
+      await client.query(`
+        CREATE TABLE parents (
+          id SERIAL PRIMARY KEY,
+          full_name VARCHAR(100) NOT NULL,
+          password VARCHAR(100) NOT NULL,
+          parent__id INTEGER,
+          usertype VARCHAR
+        )
+      `);
+
+      await client.query(`
+        CREATE TABLE students (
+          id SERIAL PRIMARY KEY,
+          full_name VARCHAR(100) NOT NULL,
+          student_id INTEGER,
+          balance REAL,
+          parent_id INTEGER
+        )
+      `);
+
+      await client.query(`
+        CREATE TABLE payments (
+          id SERIAL PRIMARY KEY,
+          student_id INTEGER,
+          payment_date DATE NOT NULL,
+          amount NUMERIC(10,2) NOT NULL,
+          description TEXT NOT NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          created_by INTEGER
+        )
+      `);
+
+      // Создаем функцию
+      await client.query(`
+        CREATE OR REPLACE FUNCTION get_student_balance(student_id integer, target_date date DEFAULT CURRENT_DATE)
+        RETURNS numeric AS $$
+        SELECT COALESCE(SUM(amount), 0)
+        FROM payments 
+        WHERE student_id = $1 AND payment_date <= $2;
+        $$ LANGUAGE sql
+      `);
+
+      console.log('✅ Таблицы созданы');
+    }
+    
+  } catch (error) {
+    console.error('❌ Ошибка инициализации БД:', error);
+  } finally {
+    if (client) client.release();
+  }
+}
+
+// Запускаем при старте
+setTimeout(async () => {
+  const connected = await testDatabaseConnection();
+  if (connected) {
+    await initializeDatabase();
+  }
+}, 1000);
 
 // ==================== ROUTES ====================
 
@@ -427,21 +540,44 @@ app.get('/api/students/:id/balance', async (req, res) => {
 });
 
 // Проверка данных в БД
-app.get('/api/debug/check-db', async (req, res) => {
+// Диагностика подключения
+app.get('/api/debug/connection', async (req, res) => {
   try {
-    const adminCount = await pool.query('SELECT COUNT(*) FROM admin');
-    const parentsCount = await pool.query('SELECT COUNT(*) FROM parents');
-    const studentsCount = await pool.query('SELECT COUNT(*) FROM students');
-    const paymentsCount = await pool.query('SELECT COUNT(*) FROM payments');
+    const client = await pool.connect();
+    const dbInfo = await client.query('SELECT NOW() as time, version() as version');
+    
+    const tables = await client.query(`
+      SELECT table_name 
+      FROM information_schema.tables 
+      WHERE table_schema = 'public'
+    `);
+    
+    client.release();
     
     res.json({
-      admin: parseInt(adminCount.rows[0].count),
-      parents: parseInt(parentsCount.rows[0].count),
-      students: parseInt(studentsCount.rows[0].count),
-      payments: parseInt(paymentsCount.rows[0].count)
+      status: 'connected',
+      database_time: dbInfo.rows[0].time,
+      version: dbInfo.rows[0].version.split('\n')[0],
+      tables: tables.rows.map(t => t.table_name),
+      environment: {
+        node_env: process.env.NODE_ENV,
+        has_database_url: !!process.env.DATABASE_URL,
+        db_host: process.env.DB_HOST,
+        db_name: process.env.DB_NAME
+      }
     });
+    
   } catch (error) {
-    res.json({ error: error.message });
+    res.status(500).json({
+      status: 'disconnected',
+      error: error.message,
+      environment: {
+        node_env: process.env.NODE_ENV,
+        has_database_url: !!process.env.DATABASE_URL,
+        db_host: process.env.DB_HOST,
+        db_name: process.env.DB_NAME
+      }
+    });
   }
 });
 
