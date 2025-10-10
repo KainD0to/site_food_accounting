@@ -273,16 +273,158 @@ app.post('/api/parent/login', async (req, res) => {
   }
 });
 
-// Остальные endpoints пока закомментируем для теста
-/*
+// Получить всех студентов (только для админа)
 app.get('/api/students', async (req, res) => {
-  // ... ваш код
+  try {
+    const token = req.headers.authorization;
+    console.log('🔐 Token для студентов:', token);
+    
+    if (!token || !token.includes('admin-token')) {
+      return res.status(403).json({ error: 'Доступ запрещен' });
+    }
+
+    console.log('📋 Запрос всех студентов...');
+    
+    const result = await pool.query(`
+      SELECT s.*, p.full_name as parent_name,
+      (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE student_id = s.id) as balance
+      FROM students s 
+      LEFT JOIN parents p ON s.parent_id = p.id 
+      ORDER BY s.full_name
+    `);
+    
+    console.log(`✅ Найдено студентов: ${result.rows.length}`);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('❌ Ошибка загрузки студентов:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
+// Получить студентов родителя
 app.get('/api/parent/students', async (req, res) => {
-  // ... ваш код  
+  try {
+    const token = req.headers.authorization;
+    console.log('🔐 Token для родителя:', token);
+    
+    if (!token || !token.includes('parent-token')) {
+      return res.status(403).json({ error: 'Доступ запрещен' });
+    }
+
+    // Извлекаем parent_id из токена (parent-token-1 → 1)
+    const parentId = parseInt(token.split('-').pop());
+    console.log(`👨‍👦 Запрос студентов для родителя ID: ${parentId}`);
+    
+    const result = await pool.query(`
+      SELECT s.*,
+      (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE student_id = s.id) as balance
+      FROM students s 
+      WHERE s.parent_id = $1
+      ORDER BY s.full_name
+    `, [parentId]);
+    
+    console.log(`✅ Найдено студентов у родителя: ${result.rows.length}`);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('❌ Ошибка загрузки студентов родителя:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
-*/
+
+// Получить платежи студента
+app.get('/api/students/:id/payments', async (req, res) => {
+  try {
+    const studentId = req.params.id;
+    const token = req.headers.authorization;
+    
+    console.log(`💰 Запрос платежей студента ID: ${studentId}`);
+    
+    // Проверка прав доступа для родителя
+    if (token && token.includes('parent-token')) {
+      const parentId = parseInt(token.split('-').pop());
+      const studentCheck = await pool.query(
+        'SELECT * FROM students WHERE id = $1 AND parent_id = $2',
+        [studentId, parentId]
+      );
+      
+      if (studentCheck.rows.length === 0) {
+        return res.status(403).json({ error: 'Доступ запрещен' });
+      }
+    }
+
+    const result = await pool.query(
+      'SELECT * FROM payments WHERE student_id = $1 ORDER BY payment_date DESC, created_at DESC',
+      [studentId]
+    );
+
+    console.log(`✅ Найдено платежей: ${result.rows.length}`);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('❌ Ошибка загрузки платежей:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Добавить платеж (только для администратора)
+app.post('/api/payments', async (req, res) => {
+  try {
+    const token = req.headers.authorization;
+    
+    if (!token || !token.includes('admin-token')) {
+      return res.status(403).json({ error: 'Доступ запрещен' });
+    }
+
+    const { student_id, payment_date, amount, description } = req.body;
+    
+    console.log('➕ Добавление платежа:', { student_id, amount, description });
+
+    // Извлекаем admin_id из токена (admin-token-1 → 1)
+    const adminId = parseInt(token.split('-').pop());
+
+    const result = await pool.query(
+      `INSERT INTO payments (student_id, payment_date, amount, description, created_by) 
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [student_id, payment_date, amount, description, adminId]
+    );
+
+    console.log('✅ Платеж добавлен:', result.rows[0]);
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('❌ Ошибка добавления платежа:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Получить баланс студента
+app.get('/api/students/:id/balance', async (req, res) => {
+  try {
+    const studentId = req.params.id;
+    const token = req.headers.authorization;
+    
+    // Проверка прав доступа для родителя
+    if (token && token.includes('parent-token')) {
+      const parentId = parseInt(token.split('-').pop());
+      const studentCheck = await pool.query(
+        'SELECT * FROM students WHERE id = $1 AND parent_id = $2',
+        [studentId, parentId]
+      );
+      
+      if (studentCheck.rows.length === 0) {
+        return res.status(403).json({ error: 'Доступ запрещен' });
+      }
+    }
+
+    const result = await pool.query(
+      'SELECT public.get_student_balance($1, CURRENT_DATE) as balance',
+      [studentId]
+    );
+
+    res.json({ balance: parseFloat(result.rows[0].balance) });
+  } catch (error) {
+    console.error('❌ Ошибка получения баланса:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
