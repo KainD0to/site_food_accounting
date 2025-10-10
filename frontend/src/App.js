@@ -41,6 +41,7 @@ const theme = createTheme({
 
 // Компонент входа
 // Компонент входа
+// Компонент входа
 function Login({ onLogin, onError }) {
   const [formData, setFormData] = useState({
     full_name: '',
@@ -48,56 +49,64 @@ function Login({ onLogin, onError }) {
     userType: 'parent'
   });
   const [loginError, setLoginError] = useState('');
+  const [loading, setLoading] = useState(false); // ← ДОБАВЬТЕ ЭТУ СТРОКУ!
 
   const handleSubmit = async (e) => {
-  e.preventDefault();
-  setLoginError('');
-  setLoading(true);
-  
-  try {
-    console.log('🚀 Отправка запроса на вход...');
+    e.preventDefault();
+    setLoginError('');
+    setLoading(true);
     
-    const response = await fetch(`/api/${formData.userType}/login`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        full_name: formData.full_name,
-        password: formData.password
-      })
+    try {
+      console.log('🚀 Отправка запроса на вход...');
+      
+      const response = await fetch(`/api/${formData.userType}/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          full_name: formData.full_name,
+          password: formData.password
+        })
+      });
+
+      console.log('📨 Ответ получен, статус:', response.status);
+
+      // Проверяем что ответ не пустой
+      const responseText = await response.text();
+      console.log('📝 Текст ответа:', responseText);
+
+      if (!responseText) {
+        throw new Error('Пустой ответ от сервера');
+      }
+
+      // Парсим JSON только если есть содержимое
+      const data = JSON.parse(responseText);
+      console.log('📊 Данные ответа:', data);
+
+      if (!response.ok) {
+        throw new Error(data.error || `Ошибка: ${response.status}`);
+      }
+
+      console.log('✅ Успешный вход!');
+      onLogin(data.user, data.token);
+      
+    } catch (error) {
+      console.error('❌ Ошибка входа:', error);
+      const errorMessage = error.message || 'Ошибка соединения с сервером';
+      setLoginError(errorMessage);
+      onError(errorMessage, 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleChange = (e) => {
+    setFormData({
+      ...formData,
+      [e.target.name]: e.target.value
     });
-
-    console.log('📨 Ответ получен, статус:', response.status);
-
-    // Проверяем что ответ не пустой
-    const responseText = await response.text();
-    console.log('📝 Текст ответа:', responseText);
-
-    if (!responseText) {
-      throw new Error('Пустой ответ от сервера');
-    }
-
-    // Парсим JSON только если есть содержимое
-    const data = JSON.parse(responseText);
-    console.log('📊 Данные ответа:', data);
-
-    if (!response.ok) {
-      throw new Error(data.error || `Ошибка: ${response.status}`);
-    }
-
-    console.log('✅ Успешный вход!');
-    onLogin(data.user, data.token);
-    
-  } catch (error) {
-    console.error('❌ Ошибка входа:', error);
-    const errorMessage = error.message || 'Ошибка соединения с сервером';
-    setLoginError(errorMessage);
-    onError(errorMessage, 'error');
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   const handleAdminLogin = () => {
     setFormData({
@@ -109,7 +118,7 @@ function Login({ onLogin, onError }) {
 
   const handleParentLogin = () => {
     setFormData({
-      full_name: 'Иванов Иван Иванович', 
+      full_name: 'Иванов Иван Иванович',
       password: '123',
       userType: 'parent'
     });
@@ -139,10 +148,10 @@ function Login({ onLogin, onError }) {
           <Box sx={{ mb: 2, p: 2, backgroundColor: '#f5f5f5', borderRadius: 1 }}>
             <Typography variant="body2" color="text.secondary">
               <strong>Тестовые данные:</strong><br/>
-              <Button onClick={handleAdminLogin} size="small">
+              <Button onClick={handleAdminLogin} size="small" disabled={loading}>
                 Админ: Тест админ / 1357911Dan
               </Button><br/>
-              <Button onClick={handleParentLogin} size="small">
+              <Button onClick={handleParentLogin} size="small" disabled={loading}>
                 Родитель: Иванов Иван Иванович / 123
               </Button>
             </Typography>
@@ -156,8 +165,8 @@ function Login({ onLogin, onError }) {
               label="ФИО"
               name="full_name"
               value={formData.full_name}
-              onChange={(e) => setFormData({...formData, full_name: e.target.value})}
-              placeholder="Введите ФИО"
+              onChange={handleChange}
+              disabled={loading}
             />
             
             <TextField
@@ -168,8 +177,8 @@ function Login({ onLogin, onError }) {
               label="Пароль"
               type="password"
               value={formData.password}
-              onChange={(e) => setFormData({...formData, password: e.target.value})}
-              placeholder="Введите пароль"
+              onChange={handleChange}
+              disabled={loading}
             />
             
             <Button
@@ -177,8 +186,9 @@ function Login({ onLogin, onError }) {
               fullWidth
               variant="contained"
               sx={{ mt: 3, mb: 1 }}
+              disabled={loading}
             >
-              Войти
+              {loading ? 'Вход...' : 'Войти'}
             </Button>
           </Box>
         </Paper>
