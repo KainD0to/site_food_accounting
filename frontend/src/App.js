@@ -184,6 +184,101 @@ function Login({ onLogin, onError }) {
   );
 }
 
+// После endpoints входа добавьте:
+
+// Получить всех студентов (для админа)
+app.get('/api/students', async (req, res) => {
+  console.log('📋 Запрос всех студентов');
+  
+  // ТЕСТОВЫЕ ДАННЫЕ
+  const testStudents = [
+    {
+      id: 1,
+      full_name: "Иванов Илья Иванович",
+      student_id: 1,
+      balance: 1500,
+      parent_name: "Иванов Иван Иванович"
+    },
+    {
+      id: 2, 
+      full_name: "Петров Илья Петрович",
+      student_id: 2,
+      balance: 800,
+      parent_name: "Петров Пётр Петрович"
+    }
+  ];
+  
+  res.json(testStudents);
+});
+
+// Получить студентов родителя
+app.get('/api/parent/students', async (req, res) => {
+  console.log('👨‍👦 Запрос студентов родителя');
+  
+  const token = req.headers.authorization;
+  
+  // ТЕСТОВЫЕ ДАННЫЕ В ЗАВИСИМОСТИ ОТ ТОКЕНА
+  if (token && token.includes('parent-token-1')) {
+    // Иванов Иван Иванович видит только своего ребенка
+    res.json([{
+      id: 1,
+      full_name: "Иванов Илья Иванович", 
+      student_id: 1,
+      balance: 1500
+    }]);
+  } else if (token && token.includes('parent-token-2')) {
+    // Петров Пётр Петрович видит только своего ребенка  
+    res.json([{
+      id: 2,
+      full_name: "Петров Илья Петрович",
+      student_id: 2, 
+      balance: 800
+    }]);
+  } else {
+    res.json([]);
+  }
+});
+
+// Получить платежи студента
+app.get('/api/students/:id/payments', async (req, res) => {
+  const studentId = req.params.id;
+  console.log(`💰 Запрос платежей студента ${studentId}`);
+  
+  // ТЕСТОВЫЕ ПЛАТЕЖИ
+  const testPayments = [
+    {
+      id: 1,
+      student_id: parseInt(studentId),
+      payment_date: "2024-01-15",
+      amount: 1000,
+      description: "Пополнение счета"
+    },
+    {
+      id: 2,
+      student_id: parseInt(studentId), 
+      payment_date: "2024-01-20",
+      amount: 500,
+      description: "Дополнительное пополнение"
+    }
+  ];
+  
+  res.json(testPayments);
+});
+
+// Добавить платеж
+app.post('/api/payments', async (req, res) => {
+  console.log('➕ Добавление платежа:', req.body);
+  
+  // ТЕСТОВЫЙ ОТВЕТ
+  const newPayment = {
+    id: Date.now(),
+    ...req.body,
+    created_at: new Date().toISOString()
+  };
+  
+  res.json(newPayment);
+});
+
 // Панель администратора
 function AdminDashboard({ user, onLogout, onNotification }) {
   const [students, setStudents] = useState([]);
