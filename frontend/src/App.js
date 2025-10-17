@@ -1,3 +1,4 @@
+import './App.css';
 import React, { useState, useEffect } from 'react';
 import {
   Container,
@@ -27,9 +28,9 @@ import {
   Alert
 } from '@mui/material';
 
-const API_BASE = window.location.hostname === 'localhost' 
+const API_BASE = process.env.NODE_ENV === 'development' 
   ? 'http://localhost:5000'
-  : 'https://site-food-accounting.onrender.com';
+  : '';
 
 // Тема Material-UI
 const theme = createTheme({
@@ -112,7 +113,7 @@ function Login({ onLogin, onError }) {
   };
 
   return (
-    <Container component="main" maxWidth="xs">
+    <Container component="main" maxWidth="xs" className="login-container">
       <Box
         sx={{
           marginTop: 8,
@@ -121,59 +122,82 @@ function Login({ onLogin, onError }) {
           alignItems: 'center',
         }}
       >
-        <Paper elevation={3} sx={{ padding: 4, width: '100%' }}>
-          <Typography component="h1" variant="h5" align="center" gutterBottom>
+        <Paper className="login-card" elevation={3}>
+          <Typography className="login-title" component="h1" variant="h5" gutterBottom>
             🍎 Система учета питания
           </Typography>
           
+          <Typography className="login-subtitle" variant="body2" color="text.secondary">
+            Войдите в свой аккаунт
+          </Typography>
+
           {loginError && (
-            <Alert severity="error" sx={{ mb: 2 }}>
+            <Alert severity="error" sx={{ mb: 2 }} className="error-message">
               {loginError}
             </Alert>
           )}
 
-          <Box sx={{ mb: 2, p: 2, backgroundColor: '#f5f5f5', borderRadius: 1 }}>
-            <Typography variant="body2" color="text.secondary">
-              <strong>Тестовые данные:</strong><br/>
-              <Button onClick={handleAdminLogin} size="small" disabled={loading}>
-                Админ: Тест админ / 1357911Dan
-              </Button><br/>
-              <Button onClick={handleParentLogin} size="small" disabled={loading}>
-                Родитель: Иванов Иван Иванович / 123
-              </Button>
+          <Box className="test-accounts">
+            <Typography className="test-title" variant="body2">
+              <strong>Тестовые данные:</strong>
             </Typography>
+            <Button 
+              onClick={handleAdminLogin} 
+              size="small" 
+              disabled={loading}
+              className="test-account"
+              fullWidth
+              sx={{ mb: 1 }}
+            >
+              Админ: Тест админ / 1357911Dan
+            </Button>
+            <Button 
+              onClick={handleParentLogin} 
+              size="small" 
+              disabled={loading}
+              className="test-account"
+              fullWidth
+            >
+              Родитель: Иванов Иван Иванович / 123
+            </Button>
           </Box>
 
-          <Box component="form" onSubmit={handleSubmit} sx={{ mt: 1 }}>
-            <TextField
-              margin="normal"
-              required
-              fullWidth
-              label="ФИО"
-              name="full_name"
-              value={formData.full_name}
-              onChange={handleChange}
-              disabled={loading}
-            />
+          <Box component="form" onSubmit={handleSubmit} className="login-form">
+            <div className="form-group">
+              <Typography className="form-label">ФИО</Typography>
+              <TextField
+                required
+                fullWidth
+                name="full_name"
+                value={formData.full_name}
+                onChange={handleChange}
+                disabled={loading}
+                className="form-input"
+                variant="outlined"
+              />
+            </div>
             
-            <TextField
-              margin="normal"
-              required
-              fullWidth
-              name="password"
-              label="Пароль"
-              type="password"
-              value={formData.password}
-              onChange={handleChange}
-              disabled={loading}
-            />
+            <div className="form-group">
+              <Typography className="form-label">Пароль</Typography>
+              <TextField
+                required
+                fullWidth
+                name="password"
+                type="password"
+                value={formData.password}
+                onChange={handleChange}
+                disabled={loading}
+                className="form-input"
+                variant="outlined"
+              />
+            </div>
             
             <Button
               type="submit"
               fullWidth
               variant="contained"
-              sx={{ mt: 3, mb: 1 }}
               disabled={loading}
+              className="login-button"
             >
               {loading ? 'Вход...' : 'Войти'}
             </Button>
@@ -203,7 +227,7 @@ function AdminDashboard({ user, onLogout, onNotification }) {
   const fetchStudents = async () => {
   try {
     const token = localStorage.getItem('token');
-    const response = await fetch(`${API_BASE}/api/students`, {  // ← ДОБАВЬТЕ API_BASE
+    const response = await fetch(`${API_BASE}/api/students`, {
       headers: {
         'Authorization': `Bearer ${token}`
       }
@@ -264,26 +288,33 @@ const handleAddPayment = async () => {
 };
 
   return (
-    <Box>
-      <AppBar position="static">
-        <Toolbar>
-          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
+    <Box className="App">
+      <AppBar position="static" className="dashboard-header">
+        <Toolbar className="header-content">
+          <Typography className="header-title" variant="h6" component="div">
             Панель администратора
           </Typography>
-          <Typography variant="body1" sx={{ mr: 2 }}>
-            {user.full_name}
-          </Typography>
-          <Button color="inherit" onClick={onLogout}>Выйти</Button>
+          <div className="user-info">
+            <Typography className="user-name" variant="body1">
+              {user.full_name}
+            </Typography>
+            <Button
+              onClick={onLogout}
+              className="logout-button"
+            >
+              Выйти
+            </Button>
+          </div>
         </Toolbar>
       </AppBar>
 
-      <Container sx={{ mt: 4 }}>
-        <Typography variant="h4" gutterBottom>
+      <Container className="dashboard-content">
+        <Typography className="section-title" variant="h4" gutterBottom>
           Управление счетами студентов
         </Typography>
 
-        <TableContainer component={Paper}>
-          <Table>
+        <TableContainer component={Paper} className="payments-section">
+          <Table className="payments-table">
             <TableHead>
               <TableRow>
                 <TableCell>ФИО студента</TableCell>
@@ -301,92 +332,30 @@ const handleAddPayment = async () => {
                   <TableCell>{student.parent_name || 'Не указан'}</TableCell>
                   <TableCell>{student.balance} ₽</TableCell>
                   <TableCell>
-                    <Button 
-                      onClick={() => fetchPayments(student.id)}
-                      sx={{ mr: 1 }}
-                    >
-                      История
-                    </Button>
-                    <Button 
-                      variant="outlined"
-                      onClick={() => {
-                        setSelectedStudent(student.id);
-                        setPaymentDialogOpen(true);
-                      }}
-                    >
-                      Пополнить
-                    </Button>
+                    <div className="table-actions">
+                      <Button 
+                        onClick={() => fetchPayments(student.id)}
+                        className="history-button"
+                      >
+                        История
+                      </Button>
+                      <Button 
+                        variant="contained"
+                        onClick={() => {
+                          setSelectedStudent(student.id);
+                          setPaymentDialogOpen(true);
+                        }}
+                        className="topup-button"
+                      >
+                        Пополнить
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         </TableContainer>
-
-        {selectedStudent && payments.length > 0 && (
-          <Box sx={{ mt: 4 }}>
-            <Typography variant="h5" gutterBottom>
-              История платежей
-            </Typography>
-            <TableContainer component={Paper}>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Дата</TableCell>
-                    <TableCell>Сумма</TableCell>
-                    <TableCell>Описание</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {payments.map((payment) => (
-                    <TableRow key={payment.id}>
-                      <TableCell>{payment.payment_date}</TableCell>
-                      <TableCell>{payment.amount} ₽</TableCell>
-                      <TableCell>{payment.description}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          </Box>
-        )}
-
-        <Dialog open={paymentDialogOpen} onClose={() => setPaymentDialogOpen(false)}>
-          <DialogTitle>Пополнение счета</DialogTitle>
-          <DialogContent>
-            <TextField
-              autoFocus
-              margin="dense"
-              label="Сумма"
-              type="number"
-              fullWidth
-              variant="outlined"
-              value={paymentData.amount}
-              onChange={(e) => setPaymentData({...paymentData, amount: e.target.value})}
-            />
-            <TextField
-              margin="dense"
-              label="Описание"
-              fullWidth
-              variant="outlined"
-              value={paymentData.description}
-              onChange={(e) => setPaymentData({...paymentData, description: e.target.value})}
-            />
-            <TextField
-              margin="dense"
-              label="Дата"
-              type="date"
-              fullWidth
-              variant="outlined"
-              value={paymentData.payment_date}
-              onChange={(e) => setPaymentData({...paymentData, payment_date: e.target.value})}
-            />
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setPaymentDialogOpen(false)}>Отмена</Button>
-            <Button onClick={handleAddPayment}>Пополнить</Button>
-          </DialogActions>
-        </Dialog>
       </Container>
     </Box>
   );
@@ -438,21 +407,29 @@ const fetchPayments = async (studentId) => {
 };
 
   return (
-    <Box>
-      <AppBar position="static">
-        <Toolbar>
-          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
+    <Box className="App">
+      <AppBar position="static" className="dashboard-header">
+        <Toolbar className="header-content">
+          <Typography className="header-title" variant="h6" component="div">
             Личный кабинет родителя
           </Typography>
-          <Typography variant="body1" sx={{ mr: 2 }}>
-            {user.full_name}
-          </Typography>
-          <Button color="inherit" onClick={onLogout}>Выйти</Button>
+          <div className="user-info">
+            <Typography className="user-name" variant="body1">
+              {user.full_name}
+            </Typography>
+            <Button 
+              color="inherit" 
+              onClick={onLogout}
+              className="logout-button"
+            >
+              Выйти
+            </Button>
+          </div>
         </Toolbar>
       </AppBar>
 
-      <Container sx={{ mt: 4 }}>
-        <Typography variant="h4" gutterBottom>
+      <Container className="dashboard-content">
+        <Typography className="section-title" variant="h4" gutterBottom>
           Мои дети
         </Typography>
 
@@ -461,22 +438,22 @@ const fetchPayments = async (studentId) => {
             Нет привязанных студентов
           </Typography>
         ) : (
-          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+          <Box className="students-grid">
             {students.map((student) => (
-              <Card key={student.id} sx={{ minWidth: 300 }}>
+              <Card key={student.id} className="student-card">
                 <CardContent>
-                  <Typography variant="h6" gutterBottom>
+                  <Typography className="student-name" variant="h6" gutterBottom>
                     {student.full_name}
                   </Typography>
-                  <Typography color="textSecondary">
+                  <Typography className="student-id" color="textSecondary">
                     ID студента: {student.student_id}
                   </Typography>
-                  <Typography variant="h5" sx={{ mt: 2, color: 'primary.main' }}>
+                  <Typography className="student-balance" variant="h5">
                     Баланс: {student.balance} ₽
                   </Typography>
                   <Button 
                     onClick={() => fetchPayments(student.id)}
-                    sx={{ mt: 2 }}
+                    className="history-button"
                     variant="outlined"
                   >
                     Показать историю платежей
@@ -488,12 +465,12 @@ const fetchPayments = async (studentId) => {
         )}
 
         {selectedStudent && payments.length > 0 && (
-          <Box sx={{ mt: 4 }}>
-            <Typography variant="h5" gutterBottom>
+          <Box className="payments-section">
+            <Typography className="payments-title" variant="h5" gutterBottom>
               История платежей
             </Typography>
             <TableContainer component={Paper}>
-              <Table>
+              <Table className="payments-table">
                 <TableHead>
                   <TableRow>
                     <TableCell>Дата</TableCell>

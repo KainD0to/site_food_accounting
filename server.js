@@ -6,9 +6,119 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 
 const { Pool } = pkg;
-const app = express(); // ← ПЕРЕНЕСИ СЮДА!
+const app = express();
+
+app.use(cors({
+  origin: ['http://localhost:3000', 'https://site-food-accounting-frontend.onrender.com'],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 
 // ==================== MIDDLEWARE ====================
+
+const TEST_MODE = true; //УДАЛИТЬ КОГДА ТЕСТ ЗАКОНЧИТСЯ (ТЕСТОВЫЙ РЕЖИМ ДЛЯ ДИЗАЙНЕРА)
+// ТЕСТОВЫЕ ДАННЫЕ - УДАЛИТЬ ПОСЛЕ НАСТРОЙКИ БД
+const testStudents = [
+  {
+    id: 1,
+    full_name: 'Иванов Петр Иванович',
+    student_id: 'ST001',
+    parent_name: 'Иванов Иван Иванович',
+    balance: 1500.00
+  },
+  {
+    id: 2,
+    full_name: 'Петрова Мария Сергеевна',
+    student_id: 'ST002',
+    parent_name: 'Петрова Ольга Владимировна',
+    balance: 800.50
+  },
+  {
+    id: 3,
+    full_name: 'Сидоров Алексей Викторович',
+    student_id: 'ST003',
+    parent_name: 'Сидорова Елена Петровна',
+    balance: 1200.00
+  }
+];
+
+const testPayments = [
+  {
+    id: 1,
+    student_id: 1,
+    amount: 1000,
+    description: 'Пополнение счета',
+    payment_date: '2024-01-15'
+  },
+  {
+    id: 2,
+    student_id: 1,
+    amount: -500,
+    description: 'Оплата питания',
+    payment_date: '2024-01-10'
+  }
+];
+// КОНЕЦ ТЕСТОВЫХ ДАННЫХ
+
+// ПРОСТОЙ МАРШРУТ ДЛЯ СТУДЕНТОВ (АДМИН)
+app.get('/api/students', async (req, res) => {
+  try {
+    const token = req.headers.authorization;
+    console.log('🔐 Token для студентов:', token);
+    
+    // ПРОСТАЯ ПРОВЕРКА - РАБОТАЕТ ДЛЯ ЛЮБОГО admin-token
+    if (!token || !token.includes('admin-token')) {
+      return res.status(403).json({ error: 'Доступ запрещен' });
+    }
+
+    console.log('✅ Возвращаем тестовых студентов');
+    res.json(testStudents);
+    
+  } catch (error) {
+    console.error('❌ Ошибка:', error);
+    res.json(testStudents);
+  }
+});
+
+// ПРОСТОЙ МАРШРУТ ДЛЯ СТУДЕНТОВ РОДИТЕЛЯ
+app.get('/api/parent/students', async (req, res) => {
+  try {
+    const token = req.headers.authorization;
+    console.log('🔐 Token для родителя:', token);
+    
+    // ПРОСТАЯ ПРОВЕРКА - РАБОТАЕТ ДЛЯ ЛЮБОГО parent-token
+    if (!token || !token.includes('parent-token')) {
+      return res.status(403).json({ error: 'Доступ запрещен' });
+    }
+
+    // Для родителя "Иванов Иван Иванович" показываем его детей
+    const parentStudents = testStudents.filter(s => s.parent_name.includes('Иванов'));
+    console.log('✅ Возвращаем студентов родителя:', parentStudents.length);
+    res.json(parentStudents);
+    
+  } catch (error) {
+    console.error('❌ Ошибка:', error);
+    const parentStudents = testStudents.filter(s => s.parent_name.includes('Иванов'));
+    res.json(parentStudents);
+  }
+});
+
+// ПРОСТОЙ МАРШРУТ ДЛЯ ПЛАТЕЖЕЙ
+app.get('/api/students/:id/payments', async (req, res) => {
+  try {
+    const studentId = parseInt(req.params.id);
+    console.log('💰 Запрос платежей студента ID:', studentId);
+    
+    const payments = testPayments.filter(p => p.student_id === studentId);
+    console.log('✅ Найдено платежей:', payments.length);
+    res.json(payments);
+    
+  } catch (error) {
+    console.error('❌ Ошибка:', error);
+    res.json([]);
+  }
+});
 
 // Защита headers
 app.use(helmet());
@@ -389,6 +499,11 @@ app.post('/api/parent/login', async (req, res) => {
 // Получить всех студентов (только для админа)
 app.get('/api/students', async (req, res) => {
   try {
+    // ВРЕМЕННО: пропускаем проверки и возвращаем тестовые данные
+    if (TEST_MODE) {
+      console.log('📋 ТЕСТОВЫЙ РЕЖИМ - возвращаем тестовых студентов');
+      return res.json(testStudents);
+    }
     const token = req.headers.authorization;
     console.log('🔐 Token для студентов:', token);
     
