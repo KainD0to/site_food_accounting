@@ -26,6 +26,7 @@ cd frontend
 npm install
 npm start
 
+```
 ## Запуск онлайн
 
 https://site-food-accounting-frontend.onrender.com/
