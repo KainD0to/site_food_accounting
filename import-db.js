@@ -12,7 +12,7 @@ const poolConfig = {
   port: 5432,
   database: 'food-accounting-db',
   user: 'postgres',
-  password: 'Hashiramochka0', // замените на реальный пароль
+  password: 'k0Npqrwrir', // замените на реальный пароль
   // SSL отключен для локальной БД
 };
 

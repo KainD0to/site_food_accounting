@@ -44,31 +44,32 @@ const theme = createTheme({
 });
 
 // Компонент входа
+// Компонент входа по ID студента
 function Login({ onLogin, onError }) {
-  const [formData, setFormData] = useState({
-    full_name: '',
-    password: '',
-    userType: 'parent'
-  });
+  const [studentId, setStudentId] = useState('');
+  const [loading, setLoading] = useState(false);
   const [loginError, setLoginError] = useState('');
-  const [loading, setLoading] = useState(false); // ← ДОБАВЬТЕ ЭТУ СТРОКУ!
+  const [adminLoginOpen, setAdminLoginOpen] = useState(false);
+  const [adminCredentials, setAdminCredentials] = useState({
+    full_name: '',
+    password: ''
+  });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     
+    if (!studentId.trim()) {
+      setLoginError('Введите ID студента');
+      return;
+    }
+
+    setLoading(true);
+    setLoginError('');
+
     try {
-      console.log('🚀 Отправка запроса на вход...');
+      console.log('🚀 Поиск студента по ID:', studentId);
       
-      const response = await fetch(`${API_BASE}/api/${formData.userType}/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          full_name: formData.full_name,
-          password: formData.password
-        })
-      });
+      const response = await fetch(`${API_BASE}/api/student/login/${studentId.trim()}`);
     
       console.log('📨 Ответ получен, статус:', response.status);
     
@@ -80,35 +81,59 @@ function Login({ onLogin, onError }) {
       }
     
       console.log('✅ Успешный вход!');
-      onLogin(data.user, data.token);
+      onLogin(data.user, 'student-token-' + data.user.id);
       
     } catch (error) {
       console.error('❌ Ошибка входа:', error);
-      onError('Ошибка входа: ' + error.message, 'error');
+      setLoginError('Студент с таким ID не найден');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value
-    });
+  const handleAdminSubmit = async () => {
+    if (!adminCredentials.full_name || !adminCredentials.password) {
+      onError('Введите логин и пароль');
+      return;
+    }
+  
+    setLoading(true);
+  
+    try {
+      console.log('🔑 Попытка входа администратора:', adminCredentials.full_name);
+      
+      const response = await fetch(`${API_BASE}/api/admin/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(adminCredentials)
+      });
+    
+      console.log('📨 Ответ получен, статус:', response.status);
+    
+      const data = await response.json();
+      console.log('📊 Данные ответа:', data);
+    
+      if (!response.ok) {
+        throw new Error(data.error || `Ошибка: ${response.status}`);
+      }
+    
+      console.log('✅ Успешный вход администратора!');
+      onLogin(data.user, data.token);
+      setAdminLoginOpen(false);
+      
+    } catch (error) {
+      console.error('❌ Ошибка входа администратора:', error);
+      onError('Неверные учетные данные администратора');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleAdminLogin = () => {
-    setFormData({
-      full_name: 'Тест админ',
-      password: '1357911Dan',
-      userType: 'admin'
-    });
-  };
-
-  const handleParentLogin = () => {
-    setFormData({
-      full_name: 'Иванов Иван Иванович',
-      password: '123',
-      userType: 'parent'
-    });
+    // Показываем форму входа для администратора
+    setAdminLoginOpen(true);
   };
 
   return (
@@ -126,46 +151,27 @@ function Login({ onLogin, onError }) {
             🍎 Система учета питания
           </Typography>
           
+          <Typography variant="body2" color="text.secondary" align="center" sx={{ mb: 3 }}>
+            Введите ID студента для входа
+          </Typography>
+
           {loginError && (
             <Alert severity="error" sx={{ mb: 2 }}>
               {loginError}
             </Alert>
           )}
 
-          <Box sx={{ mb: 2, p: 2, backgroundColor: '#f5f5f5', borderRadius: 1 }}>
-            <Typography variant="body2" color="text.secondary">
-              <strong>Тестовые данные:</strong><br/>
-              <Button onClick={handleAdminLogin} size="small" disabled={loading}>
-                Админ: Тест админ / 1357911Dan
-              </Button><br/>
-              <Button onClick={handleParentLogin} size="small" disabled={loading}>
-                Родитель: Иванов Иван Иванович / 123
-              </Button>
-            </Typography>
-          </Box>
-
           <Box component="form" onSubmit={handleSubmit} sx={{ mt: 1 }}>
             <TextField
               margin="normal"
               required
               fullWidth
-              label="ФИО"
-              name="full_name"
-              value={formData.full_name}
-              onChange={handleChange}
+              label="ID студента"
+              name="studentId"
+              value={studentId}
+              onChange={(e) => setStudentId(e.target.value)}
               disabled={loading}
-            />
-            
-            <TextField
-              margin="normal"
-              required
-              fullWidth
-              name="password"
-              label="Пароль"
-              type="password"
-              value={formData.password}
-              onChange={handleChange}
-              disabled={loading}
+              placeholder="Например: 1001"
             />
             
             <Button
@@ -178,8 +184,48 @@ function Login({ onLogin, onError }) {
               {loading ? 'Вход...' : 'Войти'}
             </Button>
           </Box>
+
+          {/* Скрытая кнопка для админа - можно удалить после тестирования */}
+          <Box sx={{ textAlign: 'center', mt: 2 }}>
+            <Button 
+              size="small" 
+              onClick={handleAdminLogin}
+              sx={{ fontSize: '12px', color: 'gray' }}
+            >
+              Вход для администратора
+            </Button>
+          </Box>
         </Paper>
       </Box>
+      <Dialog open={adminLoginOpen} onClose={() => setAdminLoginOpen(false)}>
+        <DialogTitle>Вход для администратора</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Логин"
+            fullWidth
+            variant="outlined"
+            value={adminCredentials.full_name}
+            onChange={(e) => setAdminCredentials({...adminCredentials, full_name: e.target.value})}
+          />
+          <TextField
+            margin="dense"
+            label="Пароль"
+            type="password"
+            fullWidth
+            variant="outlined"
+            value={adminCredentials.password}
+            onChange={(e) => setAdminCredentials({...adminCredentials, password: e.target.value})}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAdminLoginOpen(false)}>Отмена</Button>
+          <Button onClick={handleAdminSubmit} disabled={loading}>
+            {loading ? 'Вход...' : 'Войти'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   );
 }
@@ -203,7 +249,7 @@ function AdminDashboard({ user, onLogout, onNotification }) {
   const fetchStudents = async () => {
   try {
     const token = localStorage.getItem('token');
-    const response = await fetch(`${API_BASE}/api/students`, {  // ← ДОБАВЬТЕ API_BASE
+    const response = await fetch(`${API_BASE}/api/students`, {
       headers: {
         'Authorization': `Bearer ${token}`
       }
@@ -220,7 +266,7 @@ function AdminDashboard({ user, onLogout, onNotification }) {
 const fetchPayments = async (studentId) => {
   try {
     const token = localStorage.getItem('token');
-    const response = await fetch(`${API_BASE}/api/students/${studentId}/payments`, {  // ← ДОБАВЬТЕ API_BASE
+    const response = await fetch(`${API_BASE}/api/students/${studentId}/payments`, {
       headers: {
         'Authorization': `Bearer ${token}`
       }
@@ -238,7 +284,7 @@ const fetchPayments = async (studentId) => {
 const handleAddPayment = async () => {
   try {
     const token = localStorage.getItem('token');
-    const response = await fetch(`${API_BASE}/api/payments`, {  // ← ДОБАВЬТЕ API_BASE
+    const response = await fetch(`${API_BASE}/api/payments`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -392,57 +438,36 @@ const handleAddPayment = async () => {
   );
 }
 
-// Панель родителя
-function ParentDashboard({ user, onLogout, onNotification }) {
-  const [students, setStudents] = useState([]);
-  const [selectedStudent, setSelectedStudent] = useState(null);
+function UserDashboard({ user, onLogout, onNotification }) {
   const [payments, setPayments] = useState([]);
 
   useEffect(() => {
-    fetchStudents();
+    fetchPayments();
   }, []);
 
-  const fetchStudents = async () => {
-  try {
-    const token = localStorage.getItem('token');
-    const response = await fetch(`${API_BASE}/api/parent/students`, {  // ← ДОБАВЬТЕ API_BASE
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
-    });
-    
-    if (!response.ok) throw new Error('Ошибка загрузки');
-    const data = await response.json();
-    setStudents(data);
-  } catch (error) {
-    onNotification('Ошибка загрузки данных: ' + error.message, 'error');
-  }
-};
-
-const fetchPayments = async (studentId) => {
-  try {
-    const token = localStorage.getItem('token');
-    const response = await fetch(`${API_BASE}/api/students/${studentId}/payments`, {  // ← ДОБАВЬТЕ API_BASE
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
-    });
-    
-    if (!response.ok) throw new Error('Ошибка загрузки');
-    const data = await response.json();
-    setPayments(data);
-    setSelectedStudent(studentId);
-  } catch (error) {
-    onNotification('Ошибка загрузки платежей: ' + error.message, 'error');
-  }
-};
+  const fetchPayments = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API_BASE}/api/students/${user.id}/payments`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (!response.ok) throw new Error('Ошибка загрузки');
+      const data = await response.json();
+      setPayments(data);
+    } catch (error) {
+      onNotification('Ошибка загрузки платежей: ' + error.message, 'error');
+    }
+  };
 
   return (
     <Box>
       <AppBar position="static">
         <Toolbar>
           <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-            Личный кабинет родителя
+            🍎 Учет питания
           </Typography>
           <Typography variant="body1" sx={{ mr: 2 }}>
             {user.full_name}
@@ -452,67 +477,52 @@ const fetchPayments = async (studentId) => {
       </AppBar>
 
       <Container sx={{ mt: 4 }}>
-        <Typography variant="h4" gutterBottom>
-          Мои дети
-        </Typography>
+        <Card sx={{ maxWidth: 400, mx: 'auto', p: 3, mb: 4 }}>
+          <CardContent>
+            <Typography variant="h5" gutterBottom align="center">
+              Баланс студента
+            </Typography>
+            <Typography variant="h4" align="center" color="primary" sx={{ my: 2 }}>
+              {user.balance} ₽
+            </Typography>
+            <Typography variant="body1" align="center">
+              {user.full_name}
+            </Typography>
+            <Typography variant="body2" color="text.secondary" align="center">
+              ID: {user.student_id}
+            </Typography>
+          </CardContent>
+        </Card>
 
-        {students.length === 0 ? (
-          <Typography variant="h6" color="text.secondary" align="center" sx={{ mt: 4 }}>
-            Нет привязанных студентов
+        <Typography variant="h5" gutterBottom>
+          История платежей
+        </Typography>
+        
+        {payments.length === 0 ? (
+          <Typography color="text.secondary" align="center" sx={{ mt: 4 }}>
+            Платежей пока нет
           </Typography>
         ) : (
-          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-            {students.map((student) => (
-              <Card key={student.id} sx={{ minWidth: 300 }}>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    {student.full_name}
-                  </Typography>
-                  <Typography color="textSecondary">
-                    ID студента: {student.student_id}
-                  </Typography>
-                  <Typography variant="h5" sx={{ mt: 2, color: 'primary.main' }}>
-                    Баланс: {student.balance} ₽
-                  </Typography>
-                  <Button 
-                    onClick={() => fetchPayments(student.id)}
-                    sx={{ mt: 2 }}
-                    variant="outlined"
-                  >
-                    Показать историю платежей
-                  </Button>
-                </CardContent>
-              </Card>
-            ))}
-          </Box>
-        )}
-
-        {selectedStudent && payments.length > 0 && (
-          <Box sx={{ mt: 4 }}>
-            <Typography variant="h5" gutterBottom>
-              История платежей
-            </Typography>
-            <TableContainer component={Paper}>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Дата</TableCell>
-                    <TableCell>Сумма</TableCell>
-                    <TableCell>Описание</TableCell>
+          <TableContainer component={Paper}>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Дата</TableCell>
+                  <TableCell>Сумма</TableCell>
+                  <TableCell>Описание</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {payments.map((payment) => (
+                  <TableRow key={payment.id}>
+                    <TableCell>{payment.payment_date}</TableCell>
+                    <TableCell>{payment.amount} ₽</TableCell>
+                    <TableCell>{payment.description}</TableCell>
                   </TableRow>
-                </TableHead>
-                <TableBody>
-                  {payments.map((payment) => (
-                    <TableRow key={payment.id}>
-                      <TableCell>{payment.payment_date}</TableCell>
-                      <TableCell>{payment.amount} ₽</TableCell>
-                      <TableCell>{payment.description}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          </Box>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
         )}
       </Container>
     </Box>
@@ -584,7 +594,8 @@ function App() {
           onNotification={showNotification} 
         />
       ) : (
-        <ParentDashboard 
+        // Все остальные (и студенты, и родители) видят один интерфейс
+        <UserDashboard 
           user={user} 
           onLogout={handleLogout} 
           onNotification={showNotification} 
