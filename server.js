@@ -199,10 +199,41 @@ async function initializeDatabase() {
 
 // Запускаем при старте
 setTimeout(async () => {
-  if (connected) {
-    await initializeDatabase();
+  try {
+    const connected = await testDatabaseConnection();
+    if (connected) {
+      await initializeDatabase();
+      await createDefaultAdmin();
+      console.log('✅ Инициализация БД завершена');
+    } else {
+      console.log('❌ Не удалось подключиться к БД, но сервер запущен');
+    }
+  } catch (error) {
+    console.error('❌ Ошибка при инициализации:', error.message);
   }
 }, 1000);
+
+// Создаем тестового администратора по умолчанию
+async function createDefaultAdmin() {
+  try {
+    const adminCheck = await pool.query('SELECT COUNT(*) as count FROM admin');
+    const adminCount = parseInt(adminCheck.rows[0].count);
+    
+    if (adminCount === 0) {
+      await pool.query(
+        'INSERT INTO admin (full_name, password) VALUES ($1, $2)',
+        ['Администратор', 'admin123']
+      );
+      console.log('✅ Создан тестовый администратор');
+      console.log('👤 Логин: Администратор');
+      console.log('🔑 Пароль: admin123');
+    } else {
+      console.log(`✅ В БД уже есть ${adminCount} администраторов`);
+    }
+  } catch (error) {
+    console.error('❌ Ошибка создания администратора по умолчанию:', error.message);
+  }
+}
 
 // ==================== ROUTES ====================
 
