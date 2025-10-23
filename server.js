@@ -199,7 +199,6 @@ async function initializeDatabase() {
 
 // Запускаем при старте
 setTimeout(async () => {
-  const connected = await testDatabaseConnection();
   if (connected) {
     await initializeDatabase();
   }
