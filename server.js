@@ -75,23 +75,19 @@ app.use(express.json());
 
 // ==================== БАЗА ДАННЫХ ====================
 
-console.log('🔧 Проверка переменных окружения:');
-console.log('📍 NODE_ENV:', process.env.NODE_ENV);
-console.log('🔗 DATABASE_URL:', process.env.DATABASE_URL ? 'ЕСТЬ' : 'НЕТ');
-console.log('🏠 DB_HOST:', process.env.DB_HOST || 'не указан');
-console.log('📁 DB_NAME:', process.env.DB_NAME || 'не указан');
-console.log('👤 DB_USER:', process.env.DB_USER || 'не указан');
-console.log('🔐 DB_PASSWORD:', process.env.DB_PASSWORD ? '***' : 'не указан');
-
 let poolConfig;
 
-if (process.env.DATABASE_URL) {
-  // Для Render - используем DATABASE_URL с SSL
+if (process.env.NODE_ENV === 'production' || process.env.DATABASE_URL) {
+  // Для Production на Render
   poolConfig = {
     connectionString: process.env.DATABASE_URL,
     ssl: {
       rejectUnauthorized: false
-    }
+    },
+    max: 20,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 10000,
+    maxUses: 7500,
   };
   console.log('🎯 Используем DATABASE_URL (Production)');
 } else {
@@ -109,33 +105,18 @@ if (process.env.DATABASE_URL) {
 
 const pool = new Pool(poolConfig);
 
-// Тестируем подключение при старте
-async function testDatabaseConnection() {
-  let client;
-  try {
-    console.log('🔄 Тестируем подключение к БД...');
-    client = await pool.connect();
-    const result = await client.query('SELECT NOW() as current_time, version() as db_version');
-    console.log('✅ Подключение к БД УСПЕШНО');
-    console.log('⏰ Время БД:', result.rows[0].current_time);
-    console.log('📊 Версия:', result.rows[0].db_version.split('\n')[0]);
-    
-    return true;
-  } catch (error) {
-    console.error('❌ Ошибка подключения к БД:', error.message);
-    console.log('🔧 Конфиг подключения:', {
-      host: poolConfig.host,
-      database: poolConfig.database,
-      user: poolConfig.user,
-      port: poolConfig.port,
-      hasPassword: !!poolConfig.password,
-      hasSSL: !!poolConfig.ssl
-    });
-    return false;
-  } finally {
-    if (client) client.release();
-  }
-}
+// Добавьте обработчики ошибок пула
+pool.on('error', (err, client) => {
+  console.error('💥 Unexpected error on idle client', err);
+});
+
+pool.on('connect', (client) => {
+  console.log('🔄 Новое подключение к БД установлено');
+});
+
+pool.on('remove', (client) => {
+  console.log('🔌 Клиент удален из пула');
+});
 
 // Создаем таблицы если их нет
 async function initializeDatabase() {
