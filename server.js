@@ -285,7 +285,7 @@ app.get('/api/student/login/:studentId', async (req, res) => {
         token: 'user-token-' + student.id
       });
     } else {
-      return res.status(404).json({ error: 'Студент с таким ID не найден' });
+      return res.status(404).json({ error: 'Ученик с таким ID не найден' });
     }
     
   } catch (error) {
@@ -319,7 +319,7 @@ app.get('/api/students', async (req, res) => {
     
     res.json(rows);
   } catch (error) {
-    console.error('❌ Ошибка загрузки студентов:', error);
+    console.error('❌ Ошибка загрузки учеников:', error);
     res.status(500).json({ error: error.message });
   } finally {
     if (connection) connection.release();

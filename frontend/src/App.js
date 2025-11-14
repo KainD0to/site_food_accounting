@@ -77,7 +77,7 @@ function Login({ onLogin, onError }) {
       console.log('🚀 Отправка запроса на вход...');
       
       if (tabValue === 0) {
-        // Вход по ID студента (родитель/ученик)
+        // Вход по ID ученика (родитель/ученик)
         if (!formData.student_id.trim()) {
           throw new Error('Введите ID ученика');
         }
@@ -98,7 +98,7 @@ function Login({ onLogin, onError }) {
           throw new Error(data.error || `Ошибка: ${response.status}`);
         }
 
-        console.log('✅ Успешный вход по ID студента!');
+        console.log('✅ Успешный вход по ID ученика!');
         onLogin(data.user, data.token);
 
       } else {
@@ -280,7 +280,7 @@ function AdminDashboard({ user, onLogout, onNotification }) {
       const data = await response.json();
       setStudents(data);
     } catch (error) {
-      onNotification('Ошибка загрузки студентов: ' + error.message, 'error');
+      onNotification('Ошибка загрузки учеников: ' + error.message, 'error');
     } finally {
       setLoading(false);
     }
@@ -374,18 +374,18 @@ function AdminDashboard({ user, onLogout, onNotification }) {
 
       <Container sx={{ mt: 4 }}>
         <Typography variant="h4" gutterBottom>
-          Управление счетами студентов
+          Управление счетами учеников
         </Typography>
 
         {loading ? (
-          <Typography>Загрузка студентов...</Typography>
+          <Typography>Загрузка учеников...</Typography>
         ) : (
           <TableContainer component={Paper} sx={{ mt: 2 }}>
             <Table>
               <TableHead>
                 <TableRow>
-                  <TableCell><strong>ФИО студента</strong></TableCell>
-                  <TableCell><strong>ID студента</strong></TableCell>
+                  <TableCell><strong>ФИО ученика</strong></TableCell>
+                  <TableCell><strong>ID ученика</strong></TableCell>
                   <TableCell><strong>Баланс</strong></TableCell>
                   <TableCell><strong>Действия</strong></TableCell>
                 </TableRow>
@@ -499,7 +499,7 @@ function AdminDashboard({ user, onLogout, onNotification }) {
 
         <Dialog open={paymentDialogOpen} onClose={() => setPaymentDialogOpen(false)} maxWidth="sm" fullWidth>
           <DialogTitle>
-            Пополнение счета студента
+            Пополнение счета ученика
           </DialogTitle>
           <DialogContent>
             <TextField
