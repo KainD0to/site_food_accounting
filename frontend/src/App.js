@@ -283,149 +283,8 @@ function Login({ onLogin, onError }) {
   );
 }
 
-// Панель пользователя (общая для родителей и учеников)
-function UserDashboard({ user, onLogout, onNotification }) {
-  const [payments, setPayments] = useState([]);
-  const [showPayments, setShowPayments] = useState(false);
-
-  useEffect(() => {
-    if (user.role !== 'admin') {
-      fetchPayments();
-    }
-  }, [user]);
-
-  const fetchPayments = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      console.log('🔐 Token для платежей:', token);
-      
-      const response = await fetch(`${API_BASE}/api/students/${user.id}/payments`, {
-        headers: {
-          'Authorization': token
-        }
-      });
-      
-      console.log('📊 Статус ответа платежей:', response.status);
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `Ошибка: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      console.log('📋 Данные платежей:', data);
-      setPayments(data);
-    } catch (error) {
-      console.error('❌ Ошибка загрузки платежей:', error);
-      onNotification('Ошибка загрузки платежей: ' + error.message, 'error');
-    }
-  };
-
-  const togglePayments = () => {
-    setShowPayments(!showPayments);
-    if (!showPayments) {
-      fetchPayments();
-    }
-  };
-
-  return (
-    <Box>
-      <AppBar position="static">
-        <Toolbar>
-          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-            {user.role === 'admin' ? 'Панель администратора' : 'Личный кабинет'}
-          </Typography>
-          <Typography variant="body1" sx={{ mr: 2 }}>
-            {user.full_name}
-            {user.student_id && ` (ID: ${user.student_id})`}
-          </Typography>
-          <Button color="inherit" onClick={onLogout}>Выйти</Button>
-        </Toolbar>
-      </AppBar>
-
-      <Container sx={{ mt: 4 }}>
-        {user.role === 'admin' ? (
-          <AdminDashboardContent 
-            user={user} 
-            onNotification={onNotification} 
-          />
-        ) : (
-          <Box>
-            <Typography variant="h4" gutterBottom>
-              {user.parent_name ? `Ученик: ${user.full_name}` : 'Мой баланс'}
-            </Typography>
-
-            <Card sx={{ maxWidth: 400, mx: 'auto', mt: 4 }}>
-              <CardContent>
-                <Typography variant="h6" gutterBottom>
-                  {user.full_name}
-                </Typography>
-                {user.student_id && (
-                  <Typography color="textSecondary" gutterBottom>
-                    ID ученика: {user.student_id}
-                  </Typography>
-                )}
-                {user.parent_name && (
-                  <Typography color="textSecondary" gutterBottom>
-                    Родитель: {user.parent_name}
-                  </Typography>
-                )}
-                <Typography variant="h4" sx={{ mt: 2, color: 'primary.main' }}>
-                  Баланс: {user.balance || 0} ₽
-                </Typography>
-                <Button 
-                  onClick={togglePayments}
-                  sx={{ mt: 2 }}
-                  variant="outlined"
-                  fullWidth
-                >
-                  {showPayments ? 'Скрыть' : 'Показать'} историю платежей
-                </Button>
-              </CardContent>
-            </Card>
-
-            {showPayments && payments.length > 0 && (
-              <Box sx={{ mt: 4 }}>
-                <Typography variant="h5" gutterBottom>
-                  История платежей
-                </Typography>
-                <TableContainer component={Paper}>
-                  <Table>
-                    <TableHead>
-                      <TableRow>
-                        <TableCell>Дата</TableCell>
-                        <TableCell>Сумма</TableCell>
-                        <TableCell>Описание</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {payments.map((payment) => (
-                        <TableRow key={payment.id}>
-                          <TableCell>{payment.payment_date}</TableCell>
-                          <TableCell>{payment.amount} ₽</TableCell>
-                          <TableCell>{payment.description}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-              </Box>
-            )}
-
-            {showPayments && payments.length === 0 && (
-              <Typography variant="body1" color="text.secondary" align="center" sx={{ mt: 2 }}>
-                История платежей отсутствует
-              </Typography>
-            )}
-          </Box>
-        )}
-      </Container>
-    </Box>
-  );
-}
-
-// Компонент администратора
-function AdminDashboardContent({ user, onNotification }) {
+// Панель администратора
+function AdminDashboard({ user, onLogout, onNotification }) {
   const [students, setStudents] = useState([]);
   const [payments, setPayments] = useState([]);
   const [selectedStudent, setSelectedStudent] = useState(null);
@@ -541,156 +400,300 @@ function AdminDashboardContent({ user, onNotification }) {
 
   return (
     <Box>
-      <Typography variant="h4" gutterBottom>
-        Управление счетами студентов
-      </Typography>
-
-      {loading ? (
-        <Typography>Загрузка студентов...</Typography>
-      ) : (
-        <>
-          <TableContainer component={Paper} sx={{ mt: 2 }}>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell><strong>ФИО студента</strong></TableCell>
-                  <TableCell><strong>ID студента</strong></TableCell>
-                  <TableCell><strong>Родитель</strong></TableCell>
-                  <TableCell><strong>Баланс</strong></TableCell>
-                  <TableCell><strong>Действия</strong></TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {students.map((student) => (
-                  <TableRow key={student.id} hover>
-                    <TableCell>{student.full_name}</TableCell>
-                    <TableCell>{student.student_id}</TableCell>
-                    <TableCell>{student.parent_name || 'Не указан'}</TableCell>
-                    <TableCell>
-                      <Typography 
-                        variant="body1" 
-                        sx={{ 
-                          color: student.balance > 0 ? 'success.main' : 'error.main',
-                          fontWeight: 'bold'
-                        }}
-                      >
-                        {student.balance} ₽
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Button 
-                        onClick={() => fetchPayments(student.id)}
-                        sx={{ mr: 1 }}
-                        variant="outlined"
-                        size="small"
-                      >
-                        История
-                      </Button>
-                      <Button 
-                        variant="contained"
-                        size="small"
-                        onClick={() => {
-                          setSelectedStudent(student.id);
-                          setPaymentDialogOpen(true);
-                        }}
-                      >
-                        Пополнить
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-
-          {students.length === 0 && (
-            <Typography variant="body1" color="text.secondary" align="center" sx={{ mt: 4 }}>
-              Студенты не найдены
-            </Typography>
-          )}
-        </>
-      )}
-
-      {selectedStudent && payments.length > 0 && (
-        <Box sx={{ mt: 4 }}>
-          <Typography variant="h5" gutterBottom>
-            История платежей студента
+      <AppBar position="static">
+        <Toolbar>
+          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
+            Панель администратора
           </Typography>
-          <TableContainer component={Paper}>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell><strong>Дата</strong></TableCell>
-                  <TableCell><strong>Сумма</strong></TableCell>
-                  <TableCell><strong>Описание</strong></TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {payments.map((payment) => (
-                  <TableRow key={payment.id}>
-                    <TableCell>{payment.payment_date}</TableCell>
-                    <TableCell>
-                      <Typography 
-                        sx={{ 
-                          color: payment.amount > 0 ? 'success.main' : 'error.main',
-                          fontWeight: 'bold'
-                        }}
-                      >
-                        {payment.amount} ₽
-                      </Typography>
-                    </TableCell>
-                    <TableCell>{payment.description}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </Box>
-      )}
+          <Typography variant="body1" sx={{ mr: 2 }}>
+            {user.full_name}
+          </Typography>
+          <Button color="inherit" onClick={onLogout}>Выйти</Button>
+        </Toolbar>
+      </AppBar>
 
-      <Dialog open={paymentDialogOpen} onClose={() => setPaymentDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>
-          Пополнение счета студента
-        </DialogTitle>
-        <DialogContent>
-          <TextField
-            autoFocus
-            margin="dense"
-            label="Сумма пополнения"
-            type="number"
-            fullWidth
-            variant="outlined"
-            value={paymentData.amount}
-            onChange={(e) => setPaymentData({...paymentData, amount: e.target.value})}
-            sx={{ mb: 2 }}
-          />
-          <TextField
-            margin="dense"
-            label="Описание платежа"
-            fullWidth
-            variant="outlined"
-            value={paymentData.description}
-            onChange={(e) => setPaymentData({...paymentData, description: e.target.value})}
-            sx={{ mb: 2 }}
-            placeholder="Например: Оплата питания за январь"
-          />
-          <TextField
-            margin="dense"
-            label="Дата платежа"
-            type="date"
-            fullWidth
-            variant="outlined"
-            value={paymentData.payment_date}
-            onChange={(e) => setPaymentData({...paymentData, payment_date: e.target.value})}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setPaymentDialogOpen(false)}>Отмена</Button>
-          <Button onClick={handleAddPayment} variant="contained">
-            Добавить платеж
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <Container sx={{ mt: 4 }}>
+        <Typography variant="h4" gutterBottom>
+          Управление счетами студентов
+        </Typography>
+
+        {loading ? (
+          <Typography>Загрузка студентов...</Typography>
+        ) : (
+          <>
+            <TableContainer component={Paper} sx={{ mt: 2 }}>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell><strong>ФИО студента</strong></TableCell>
+                    <TableCell><strong>ID студента</strong></TableCell>
+                    <TableCell><strong>Родитель</strong></TableCell>
+                    <TableCell><strong>Баланс</strong></TableCell>
+                    <TableCell><strong>Действия</strong></TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {students.map((student) => (
+                    <TableRow key={student.id} hover>
+                      <TableCell>{student.full_name}</TableCell>
+                      <TableCell>{student.student_id}</TableCell>
+                      <TableCell>{student.parent_name || 'Не указан'}</TableCell>
+                      <TableCell>
+                        <Typography 
+                          variant="body1" 
+                          sx={{ 
+                            color: student.balance > 0 ? 'success.main' : 'error.main',
+                            fontWeight: 'bold'
+                          }}
+                        >
+                          {student.balance} ₽
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Button 
+                          onClick={() => fetchPayments(student.id)}
+                          sx={{ mr: 1 }}
+                          variant="outlined"
+                          size="small"
+                        >
+                          История
+                        </Button>
+                        <Button 
+                          variant="contained"
+                          size="small"
+                          onClick={() => {
+                            setSelectedStudent(student.id);
+                            setPaymentDialogOpen(true);
+                          }}
+                        >
+                          Пополнить
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+
+            {students.length === 0 && (
+              <Typography variant="body1" color="text.secondary" align="center" sx={{ mt: 4 }}>
+                Студенты не найдены
+              </Typography>
+            )}
+          </>
+        )}
+
+        {selectedStudent && payments.length > 0 && (
+          <Box sx={{ mt: 4 }}>
+            <Typography variant="h5" gutterBottom>
+              История платежей студента
+            </Typography>
+            <TableContainer component={Paper}>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell><strong>Дата</strong></TableCell>
+                    <TableCell><strong>Сумма</strong></TableCell>
+                    <TableCell><strong>Описание</strong></TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {payments.map((payment) => (
+                    <TableRow key={payment.id}>
+                      <TableCell>{payment.payment_date}</TableCell>
+                      <TableCell>
+                        <Typography 
+                          sx={{ 
+                            color: payment.amount > 0 ? 'success.main' : 'error.main',
+                            fontWeight: 'bold'
+                          }}
+                        >
+                          {payment.amount} ₽
+                        </Typography>
+                      </TableCell>
+                      <TableCell>{payment.description}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </Box>
+        )}
+
+        <Dialog open={paymentDialogOpen} onClose={() => setPaymentDialogOpen(false)} maxWidth="sm" fullWidth>
+          <DialogTitle>
+            Пополнение счета студента
+          </DialogTitle>
+          <DialogContent>
+            <TextField
+              autoFocus
+              margin="dense"
+              label="Сумма пополнения"
+              type="number"
+              fullWidth
+              variant="outlined"
+              value={paymentData.amount}
+              onChange={(e) => setPaymentData({...paymentData, amount: e.target.value})}
+              sx={{ mb: 2 }}
+            />
+            <TextField
+              margin="dense"
+              label="Описание платежа"
+              fullWidth
+              variant="outlined"
+              value={paymentData.description}
+              onChange={(e) => setPaymentData({...paymentData, description: e.target.value})}
+              sx={{ mb: 2 }}
+              placeholder="Например: Оплата питания за январь"
+            />
+            <TextField
+              margin="dense"
+              label="Дата платежа"
+              type="date"
+              fullWidth
+              variant="outlined"
+              value={paymentData.payment_date}
+              onChange={(e) => setPaymentData({...paymentData, payment_date: e.target.value})}
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setPaymentDialogOpen(false)}>Отмена</Button>
+            <Button onClick={handleAddPayment} variant="contained">
+              Добавить платеж
+            </Button>
+          </DialogActions>
+        </Dialog>
+      </Container>
+    </Box>
+  );
+}
+
+// Панель родителя/ученика
+function ParentDashboard({ user, onLogout, onNotification }) {
+  const [payments, setPayments] = useState([]);
+  const [showPayments, setShowPayments] = useState(false);
+
+  useEffect(() => {
+    fetchPayments();
+  }, []);
+
+  const fetchPayments = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      console.log('🔐 Token для платежей:', token);
+      
+      const response = await fetch(`${API_BASE}/api/students/${user.id}/payments`, {
+        headers: {
+          'Authorization': token
+        }
+      });
+      
+      console.log('📊 Статус ответа платежей:', response.status);
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Ошибка: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      console.log('📋 Данные платежей:', data);
+      setPayments(data);
+    } catch (error) {
+      console.error('❌ Ошибка загрузки платежей:', error);
+      onNotification('Ошибка загрузки платежей: ' + error.message, 'error');
+    }
+  };
+
+  const togglePayments = () => {
+    setShowPayments(!showPayments);
+    if (!showPayments) {
+      fetchPayments();
+    }
+  };
+
+  return (
+    <Box>
+      <AppBar position="static">
+        <Toolbar>
+          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
+            Личный кабинет
+          </Typography>
+          <Typography variant="body1" sx={{ mr: 2 }}>
+            {user.full_name}
+            {user.student_id && ` (ID: ${user.student_id})`}
+          </Typography>
+          <Button color="inherit" onClick={onLogout}>Выйти</Button>
+        </Toolbar>
+      </AppBar>
+
+      <Container sx={{ mt: 4 }}>
+        <Typography variant="h4" gutterBottom>
+          {user.parent_name ? `Ученик: ${user.full_name}` : 'Мой баланс'}
+        </Typography>
+
+        <Card sx={{ maxWidth: 400, mx: 'auto', mt: 4 }}>
+          <CardContent>
+            <Typography variant="h6" gutterBottom>
+              {user.full_name}
+            </Typography>
+            {user.student_id && (
+              <Typography color="textSecondary" gutterBottom>
+                ID ученика: {user.student_id}
+              </Typography>
+            )}
+            {user.parent_name && (
+              <Typography color="textSecondary" gutterBottom>
+                Родитель: {user.parent_name}
+              </Typography>
+            )}
+            <Typography variant="h4" sx={{ mt: 2, color: 'primary.main' }}>
+              Баланс: {user.balance || 0} ₽
+            </Typography>
+            <Button 
+              onClick={togglePayments}
+              sx={{ mt: 2 }}
+              variant="outlined"
+              fullWidth
+            >
+              {showPayments ? 'Скрыть' : 'Показать'} историю платежей
+            </Button>
+          </CardContent>
+        </Card>
+
+        {showPayments && payments.length > 0 && (
+          <Box sx={{ mt: 4 }}>
+            <Typography variant="h5" gutterBottom>
+              История платежей
+            </Typography>
+            <TableContainer component={Paper}>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Дата</TableCell>
+                    <TableCell>Сумма</TableCell>
+                    <TableCell>Описание</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {payments.map((payment) => (
+                    <TableRow key={payment.id}>
+                      <TableCell>{payment.payment_date}</TableCell>
+                      <TableCell>{payment.amount} ₽</TableCell>
+                      <TableCell>{payment.description}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </Box>
+        )}
+
+        {showPayments && payments.length === 0 && (
+          <Typography variant="body1" color="text.secondary" align="center" sx={{ mt: 2 }}>
+            История платежей отсутствует
+          </Typography>
+        )}
+      </Container>
     </Box>
   );
 }
@@ -756,8 +759,14 @@ function App() {
       
       {!user ? (
         <Login onLogin={handleLogin} onError={showNotification} />
+      ) : user.role === 'admin' ? (
+        <AdminDashboard 
+          user={user} 
+          onLogout={handleLogout} 
+          onNotification={showNotification} 
+        />
       ) : (
-        <UserDashboard 
+        <ParentDashboard 
           user={user} 
           onLogout={handleLogout} 
           onNotification={showNotification} 
