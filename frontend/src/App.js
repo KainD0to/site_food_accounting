@@ -147,15 +147,6 @@ function Login({ onLogin, onError }) {
     });
   };
 
-  const handleAdminLogin = () => {
-    setFormData({
-      full_name: 'Тест админ',
-      password: '1357911Dan',
-      student_id: '',
-      userType: 'admin'
-    });
-  };
-
   const handleStudentLogin = (studentId) => {
     setFormData({
       full_name: '',
@@ -190,31 +181,6 @@ function Login({ onLogin, onError }) {
               {loginError}
             </Alert>
           )}
-
-          <Box sx={{ mb: 2, p: 2, backgroundColor: '#f5f5f5', borderRadius: 1 }}>
-            <Typography variant="body2" color="text.secondary">
-              <strong>Тестовые данные:</strong><br/>
-              {tabValue === 0 ? (
-                <>
-                  <Button onClick={() => handleStudentLogin('1001')} size="small" disabled={loading}>
-                    Ученик ID: 1001
-                  </Button>
-                  <br/>
-                  <Button onClick={() => handleStudentLogin('1002')} size="small" disabled={loading}>
-                    Ученик ID: 1002
-                  </Button>
-                  <br/>
-                  <Button onClick={() => handleStudentLogin('1003')} size="small" disabled={loading}>
-                    Ученик ID: 1003
-                  </Button>
-                </>
-              ) : (
-                <Button onClick={handleAdminLogin} size="small" disabled={loading}>
-                  Админ: Тест админ / 1357911Dan
-                </Button>
-              )}
-            </Typography>
-          </Box>
 
           <Box component="form" onSubmit={handleSubmit} sx={{ mt: 1 }}>
             {tabValue === 0 ? (
