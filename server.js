@@ -510,6 +510,58 @@ app.get('/api/parent/students', async (req, res) => {
   }
 });
 
+// Упрощенный вход по ID студента (без пароля)
+app.get('/api/student/login/:studentId', async (req, res) => {
+  console.log('🔑 ========== ПОПЫТКА ВХОДА ПО ID СТУДЕНТА ==========');
+  
+  let connection;
+  try {
+    const studentId = req.params.studentId;
+    console.log('🎯 Поиск студента с ID:', studentId);
+
+    connection = await pool.getConnection();
+    const [rows] = await connection.execute(`
+      SELECT s.*, p.full_name as parent_name,
+      (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE student_id = s.id) as balance
+      FROM students s 
+      LEFT JOIN parents p ON s.parent_id = p.id 
+      WHERE s.student_id = ?
+    `, [studentId]);
+
+    console.log(`📊 Найдено студентов: ${rows.length}`);
+
+    if (rows.length > 0) {
+      const student = rows[0];
+      console.log('✅ Студент найден:', student.full_name);
+      
+      return res.json({
+        message: 'Успешный вход',
+        user: {
+          id: student.id,
+          full_name: student.full_name,
+          student_id: student.student_id,
+          balance: parseFloat(student.balance) || 0,
+          parent_name: student.parent_name,
+          role: 'user'
+        },
+        token: 'user-token-' + student.id
+      });
+    } else {
+      console.log('❌ Студент не найден');
+      return res.status(404).json({ error: 'Студент с таким ID не найден' });
+    }
+    
+  } catch (error) {
+    console.error('💥 Ошибка при входе:', error);
+    res.status(500).json({ 
+      error: 'Внутренняя ошибка сервера',
+      details: error.message 
+    });
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
 // Получить платежи студента
 app.get('/api/students/:id/payments', async (req, res) => {
   let connection;
