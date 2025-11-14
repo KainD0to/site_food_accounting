@@ -1,12 +1,14 @@
 import express from 'express';
-import pkg from 'pg';
+import mysql from 'mysql2/promise';
 import cors from 'cors';
-//библиотеки защиты
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
+import dotenv from 'dotenv';
 
-const { Pool } = pkg;
-const app = express(); // ← ПЕРЕНЕСИ СЮДА!
+// Загружаем переменные окружения
+dotenv.config();
+
+const app = express();
 
 // ==================== MIDDLEWARE ====================
 
@@ -24,7 +26,8 @@ app.use(limiter);
 app.use(cors({
   origin: [
     'https://site-food-accounting-frontend.onrender.com',
-    'http://localhost:3000'
+    'http://localhost:3000',
+    'http://localhost:5173' // Vite dev server
   ],
   credentials: true
 }));
@@ -40,151 +43,200 @@ console.log('🏠 DB_HOST:', process.env.DB_HOST || 'не указан');
 console.log('📁 DB_NAME:', process.env.DB_NAME || 'не указан');
 console.log('👤 DB_USER:', process.env.DB_USER || 'не указан');
 console.log('🔐 DB_PASSWORD:', process.env.DB_PASSWORD ? '***' : 'не указан');
+console.log('🚪 DB_PORT:', process.env.DB_PORT || 'не указан');
 
 let poolConfig;
 
 if (process.env.DATABASE_URL) {
-  // Используем DATABASE_URL (основной способ на Render)
+  // Используем DATABASE_URL для MySQL (продакшен)
   poolConfig = {
-    connectionString: process.env.DATABASE_URL,
+    uri: process.env.DATABASE_URL,
     ssl: {
       rejectUnauthorized: false
-    }
+    },
+    connectTimeout: 60000,
+    acquireTimeout: 60000,
+    timeout: 60000,
+    reconnect: true
   };
-  console.log('🎯 Используем DATABASE_URL');
-  
-} else if (process.env.DB_HOST) {
-  // Используем отдельные параметры
+  console.log('🎯 Используем DATABASE_URL для MySQL (продакшен)');
+} else if (process.env.DB_HOST && process.env.NODE_ENV === 'production') {
+  // Используем отдельные параметры для MySQL (продакшен)
   poolConfig = {
     host: process.env.DB_HOST,
-    port: process.env.DB_PORT || 5432,
+    port: process.env.DB_PORT || 3306,
     database: process.env.DB_NAME,
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
     ssl: {
       rejectUnauthorized: false
-    }
+    },
+    connectTimeout: 60000,
+    acquireTimeout: 60000,
+    timeout: 60000,
+    reconnect: true
   };
-  console.log('🎯 Используем отдельные параметры БД');
-  
+  console.log('🎯 Используем отдельные параметры БД (продакшен MySQL)');
 } else {
   // Локальная разработка
   poolConfig = {
-    host: 'localhost',
-    port: 5432,
-    database: 'food-accounting-db',
-    user: 'postgres',
-    password: 'ваш_локальный_пароль' // замените на реальный
+    host: process.env.DB_HOST || 'localhost',
+    port: process.env.DB_PORT || 3306,
+    database: process.env.DB_NAME || 'food_accounting_db',
+    user: process.env.DB_USER || 'root',
+    password: process.env.DB_PASSWORD || 'password',
+    // Без SSL для локальной разработки
+    connectTimeout: 60000,
+    acquireTimeout: 60000,
+    timeout: 60000,
+    reconnect: true
   };
-  console.log('🎯 Используем локальную БД (без SSL)');
+  console.log('🎯 Используем локальную БД MySQL (разработка)');
+  console.log('📋 Локальные настройки:', {
+    host: poolConfig.host,
+    port: poolConfig.port,
+    database: poolConfig.database,
+    user: poolConfig.user,
+    hasPassword: !!poolConfig.password
+  });
 }
 
-const pool = new Pool(poolConfig);
+// Создаем пул соединений MySQL
+const pool = mysql.createPool(poolConfig);
 
 // Тестируем подключение при старте
 async function testDatabaseConnection() {
-  let client;
+  let connection;
   try {
-    console.log('🔄 Тестируем подключение к БД...');
-    client = await pool.connect();
-    const result = await client.query('SELECT NOW() as current_time, version() as db_version');
-    console.log('✅ Подключение к БД УСПЕШНО');
-    console.log('⏰ Время БД:', result.rows[0].current_time);
-    console.log('📊 Версия:', result.rows[0].db_version.split('\n')[0]);
+    console.log('🔄 Тестируем подключение к БД MySQL...');
+    connection = await pool.getConnection();
+    const [rows] = await connection.execute('SELECT NOW() as current_time, VERSION() as db_version');
+    console.log('✅ Подключение к БД MySQL УСПЕШНО');
+    console.log('⏰ Время БД:', rows[0].current_time);
+    console.log('📊 Версия:', rows[0].db_version);
     
     return true;
   } catch (error) {
-    console.error('❌ Ошибка подключения к БД:', error.message);
+    console.error('❌ Ошибка подключения к БД MySQL:', error.message);
     console.log('🔧 Конфиг подключения:', {
       host: poolConfig.host,
       database: poolConfig.database,
       user: poolConfig.user,
       port: poolConfig.port,
-      hasPassword: !!poolConfig.password,
-      hasSSL: !!poolConfig.ssl
+      hasPassword: !!poolConfig.password
     });
     return false;
   } finally {
-    if (client) client.release();
+    if (connection) connection.release();
   }
 }
 
 // Создаем таблицы если их нет
 async function initializeDatabase() {
-  let client;
+  let connection;
   try {
-    client = await pool.connect();
+    connection = await pool.getConnection();
     
     // Проверяем существование таблиц
-    const tablesCheck = await client.query(`
-      SELECT table_name 
-      FROM information_schema.tables 
-      WHERE table_schema = 'public'
-      AND table_name IN ('admin', 'parents', 'students', 'payments')
-    `);
+    const [tables] = await connection.execute(`
+      SELECT TABLE_NAME 
+      FROM INFORMATION_SCHEMA.TABLES 
+      WHERE TABLE_SCHEMA = ?
+      AND TABLE_NAME IN ('admin', 'parents', 'students', 'payments')
+    `, [process.env.DB_NAME || 'food_accounting_db']);
     
-    console.log(`📊 Найдено таблиц: ${tablesCheck.rows.length}`);
+    console.log(`📊 Найдено таблиц: ${tables.length}`);
     
-    if (tablesCheck.rows.length === 0) {
-      console.log('🗃️ Создаем таблицы...');
+    if (tables.length === 0) {
+      console.log('🗃️ Создаем таблицы MySQL...');
       
-      await client.query(`
-        CREATE TABLE admin (
-          id SERIAL PRIMARY KEY,
+      await connection.execute(`
+        CREATE TABLE IF NOT EXISTS admin (
+          id INT AUTO_INCREMENT PRIMARY KEY,
           full_name VARCHAR(100) NOT NULL,
           password VARCHAR(100) NOT NULL
         )
       `);
 
-      await client.query(`
-        CREATE TABLE parents (
-          id SERIAL PRIMARY KEY,
+      await connection.execute(`
+        CREATE TABLE IF NOT EXISTS parents (
+          id INT AUTO_INCREMENT PRIMARY KEY,
           full_name VARCHAR(100) NOT NULL,
           password VARCHAR(100) NOT NULL,
-          parent__id INTEGER,
-          usertype VARCHAR
+          parent__id INT,
+          usertype VARCHAR(50)
         )
       `);
 
-      await client.query(`
-        CREATE TABLE students (
-          id SERIAL PRIMARY KEY,
+      await connection.execute(`
+        CREATE TABLE IF NOT EXISTS students (
+          id INT AUTO_INCREMENT PRIMARY KEY,
           full_name VARCHAR(100) NOT NULL,
-          student_id INTEGER,
-          balance REAL,
-          parent_id INTEGER
+          student_id INT,
+          balance FLOAT,
+          parent_id INT
         )
       `);
 
-      await client.query(`
-        CREATE TABLE payments (
-          id SERIAL PRIMARY KEY,
-          student_id INTEGER,
+      await connection.execute(`
+        CREATE TABLE IF NOT EXISTS payments (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          student_id INT,
           payment_date DATE NOT NULL,
-          amount NUMERIC(10,2) NOT NULL,
+          amount DECIMAL(10,2) NOT NULL,
           description TEXT NOT NULL,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          created_by INTEGER
+          created_by INT
         )
       `);
 
-      // Создаем функцию
-      await client.query(`
-        CREATE OR REPLACE FUNCTION get_student_balance(student_id integer, target_date date DEFAULT CURRENT_DATE)
-        RETURNS numeric AS $$
-        SELECT COALESCE(SUM(amount), 0)
-        FROM payments 
-        WHERE student_id = $1 AND payment_date <= $2;
-        $$ LANGUAGE sql
-      `);
+      // Добавляем тестовые данные для локальной разработки
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('🧪 Добавляем тестовые данные...');
+        
+        // Администратор
+        await connection.execute(`
+          INSERT IGNORE INTO admin (id, full_name, password) 
+          VALUES (1, 'Тест админ', '1357911Dan')
+        `);
+        
+        // Родитель
+        await connection.execute(`
+          INSERT IGNORE INTO parents (id, full_name, password, parent__id, usertype) 
+          VALUES (1, 'Иванов Иван Иванович', '123', 1001, 'parent')
+        `);
+        
+        // Студенты
+        await connection.execute(`
+          INSERT IGNORE INTO students (id, full_name, student_id, balance, parent_id) 
+          VALUES 
+          (1, 'Иванов Алексей', 1001, 1500.00, 1),
+          (2, 'Петрова Мария', 1002, 800.50, 1),
+          (3, 'Сидоров Дмитрий', 1003, 1200.00, 1)
+        `);
+        
+        // Платежи
+        await connection.execute(`
+          INSERT IGNORE INTO payments (id, student_id, payment_date, amount, description, created_by) 
+          VALUES 
+          (1, 1, '2024-01-15', 500.00, 'Оплата питания за январь', 1),
+          (2, 1, '2024-02-10', 1000.00, 'Оплата питания за февраль', 1),
+          (3, 2, '2024-01-20', 800.50, 'Оплата питания', 1),
+          (4, 3, '2024-02-01', 1200.00, 'Оплата питания за февраль', 1)
+        `);
+        
+        console.log('✅ Тестовые данные добавлены');
+      }
 
-      console.log('✅ Таблицы созданы');
+      console.log('✅ Таблицы MySQL созданы и инициализированы');
+    } else {
+      console.log('✅ Таблицы уже существуют');
     }
     
   } catch (error) {
-    console.error('❌ Ошибка инициализации БД:', error);
+    console.error('❌ Ошибка инициализации БД MySQL:', error);
   } finally {
-    if (client) client.release();
+    if (connection) connection.release();
   }
 }
 
@@ -213,8 +265,12 @@ app.get('/', (req, res) => {
 
 // Health check
 app.get('/api/health', async (req, res) => {
+  let connection;
   try {
-    await pool.query('SELECT 1');
+    connection = await pool.getConnection();
+    await connection.execute('SELECT 1');
+    connection.release();
+    
     res.json({ 
       status: 'OK', 
       database: 'connected',
@@ -222,6 +278,7 @@ app.get('/api/health', async (req, res) => {
       timestamp: new Date().toISOString()
     });
   } catch (error) {
+    if (connection) connection.release();
     console.error('Health check error:', error.message);
     res.status(500).json({ 
       status: 'Error', 
@@ -241,11 +298,11 @@ app.get('/api/test', (req, res) => {
   });
 });
 
-// Аутентификация администратора - УПРОЩЕННАЯ ВЕРСИЯ
-// Аутентификация администратора - с улучшенной обработкой ошибок
+// Аутентификация администратора
 app.post('/api/admin/login', async (req, res) => {
   console.log('🔑 ========== ПОПЫТКА ВХОДА АДМИНА ==========');
   
+  let connection;
   try {
     console.log('📨 Тело запроса:', req.body);
     
@@ -273,38 +330,35 @@ app.post('/api/admin/login', async (req, res) => {
     }
 
     // Пробуем реальную БД если есть подключение
-    if (pool) {
-      console.log('🔍 Поиск в базе данных...');
-      const result = await pool.query(
-        'SELECT * FROM admin WHERE full_name = $1',
-        [full_name]
-      );
+    console.log('🔍 Поиск в базе данных...');
+    connection = await pool.getConnection();
+    const [rows] = await connection.execute(
+      'SELECT * FROM admin WHERE full_name = ?',
+      [full_name]
+    );
 
-      console.log(`📊 Найдено записей: ${result.rows.length}`);
+    console.log(`📊 Найдено записей: ${rows.length}`);
 
-      if (result.rows.length > 0) {
-        const admin = result.rows[0];
-        console.log('👤 Найден администратор:', admin);
-        
-        if (password === admin.password) {
-          console.log('✅ Пароль верный');
-          return res.json({
-            message: 'Успешный вход',
-            token: 'admin-token-' + admin.id,
-            user: {
-              id: admin.id,
-              full_name: admin.full_name,
-              role: 'admin'
-            }
-          });
-        } else {
-          console.log('❌ Неверный пароль');
-        }
+    if (rows.length > 0) {
+      const admin = rows[0];
+      console.log('👤 Найден администратор:', admin);
+      
+      if (password === admin.password) {
+        console.log('✅ Пароль верный');
+        return res.json({
+          message: 'Успешный вход',
+          token: 'admin-token-' + admin.id,
+          user: {
+            id: admin.id,
+            full_name: admin.full_name,
+            role: 'admin'
+          }
+        });
       } else {
-        console.log('❌ Администратор не найден');
+        console.log('❌ Неверный пароль');
       }
     } else {
-      console.log('❌ База данных недоступна');
+      console.log('❌ Администратор не найден');
     }
 
     console.log('❌ Неверные учетные данные');
@@ -316,6 +370,8 @@ app.post('/api/admin/login', async (req, res) => {
       error: 'Внутренняя ошибка сервера',
       details: error.message 
     });
+  } finally {
+    if (connection) connection.release();
   }
 });
 
@@ -323,6 +379,7 @@ app.post('/api/admin/login', async (req, res) => {
 app.post('/api/parent/login', async (req, res) => {
   console.log('🔑 ========== ПОПЫТКА ВХОДА РОДИТЕЛЯ ==========');
   
+  let connection;
   try {
     console.log('📨 Тело запроса:', req.body);
     
@@ -348,29 +405,28 @@ app.post('/api/parent/login', async (req, res) => {
       });
     }
 
-    if (pool) {
-      console.log('🔍 Поиск в базе данных...');
-      const result = await pool.query(
-        'SELECT * FROM parents WHERE full_name = $1',
-        [full_name]
-      );
+    console.log('🔍 Поиск в базе данных...');
+    connection = await pool.getConnection();
+    const [rows] = await connection.execute(
+      'SELECT * FROM parents WHERE full_name = ?',
+      [full_name]
+    );
 
-      console.log(`📊 Найдено записей: ${result.rows.length}`);
+    console.log(`📊 Найдено записей: ${rows.length}`);
 
-      if (result.rows.length > 0) {
-        const parent = result.rows[0];
-        
-        if (password === parent.password) {
-          return res.json({
-            message: 'Успешный вход',
-            token: 'parent-token-' + parent.id,
-            user: {
-              id: parent.id,
-              full_name: parent.full_name,
-              role: 'parent'
-            }
-          });
-        }
+    if (rows.length > 0) {
+      const parent = rows[0];
+      
+      if (password === parent.password) {
+        return res.json({
+          message: 'Успешный вход',
+          token: 'parent-token-' + parent.id,
+          user: {
+            id: parent.id,
+            full_name: parent.full_name,
+            role: 'parent'
+          }
+        });
       }
     }
 
@@ -383,11 +439,14 @@ app.post('/api/parent/login', async (req, res) => {
       error: 'Внутренняя ошибка сервера',
       details: error.message 
     });
+  } finally {
+    if (connection) connection.release();
   }
 });
 
 // Получить всех студентов (только для админа)
 app.get('/api/students', async (req, res) => {
+  let connection;
   try {
     const token = req.headers.authorization;
     console.log('🔐 Token для студентов:', token);
@@ -398,7 +457,8 @@ app.get('/api/students', async (req, res) => {
 
     console.log('📋 Запрос всех студентов...');
     
-    const result = await pool.query(`
+    connection = await pool.getConnection();
+    const [rows] = await connection.execute(`
       SELECT s.*, p.full_name as parent_name,
       (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE student_id = s.id) as balance
       FROM students s 
@@ -406,16 +466,19 @@ app.get('/api/students', async (req, res) => {
       ORDER BY s.full_name
     `);
     
-    console.log(`✅ Найдено студентов: ${result.rows.length}`);
-    res.json(result.rows);
+    console.log(`✅ Найдено студентов: ${rows.length}`);
+    res.json(rows);
   } catch (error) {
     console.error('❌ Ошибка загрузки студентов:', error);
     res.status(500).json({ error: error.message });
+  } finally {
+    if (connection) connection.release();
   }
 });
 
 // Получить студентов родителя
 app.get('/api/parent/students', async (req, res) => {
+  let connection;
   try {
     const token = req.headers.authorization;
     console.log('🔐 Token для родителя:', token);
@@ -428,58 +491,67 @@ app.get('/api/parent/students', async (req, res) => {
     const parentId = parseInt(token.split('-').pop());
     console.log(`👨‍👦 Запрос студентов для родителя ID: ${parentId}`);
     
-    const result = await pool.query(`
+    connection = await pool.getConnection();
+    const [rows] = await connection.execute(`
       SELECT s.*,
       (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE student_id = s.id) as balance
       FROM students s 
-      WHERE s.parent_id = $1
+      WHERE s.parent_id = ?
       ORDER BY s.full_name
     `, [parentId]);
     
-    console.log(`✅ Найдено студентов у родителя: ${result.rows.length}`);
-    res.json(result.rows);
+    console.log(`✅ Найдено студентов у родителя: ${rows.length}`);
+    res.json(rows);
   } catch (error) {
     console.error('❌ Ошибка загрузки студентов родителя:', error);
     res.status(500).json({ error: error.message });
+  } finally {
+    if (connection) connection.release();
   }
 });
 
 // Получить платежи студента
 app.get('/api/students/:id/payments', async (req, res) => {
+  let connection;
   try {
     const studentId = req.params.id;
     const token = req.headers.authorization;
     
     console.log(`💰 Запрос платежей студента ID: ${studentId}`);
     
+    connection = await pool.getConnection();
+    
     // Проверка прав доступа для родителя
     if (token && token.includes('parent-token')) {
       const parentId = parseInt(token.split('-').pop());
-      const studentCheck = await pool.query(
-        'SELECT * FROM students WHERE id = $1 AND parent_id = $2',
+      const [studentCheck] = await connection.execute(
+        'SELECT * FROM students WHERE id = ? AND parent_id = ?',
         [studentId, parentId]
       );
       
-      if (studentCheck.rows.length === 0) {
+      if (studentCheck.length === 0) {
         return res.status(403).json({ error: 'Доступ запрещен' });
       }
     }
 
-    const result = await pool.query(
-      'SELECT * FROM payments WHERE student_id = $1 ORDER BY payment_date DESC, created_at DESC',
+    const [rows] = await connection.execute(
+      'SELECT * FROM payments WHERE student_id = ? ORDER BY payment_date DESC, created_at DESC',
       [studentId]
     );
 
-    console.log(`✅ Найдено платежей: ${result.rows.length}`);
-    res.json(result.rows);
+    console.log(`✅ Найдено платежей: ${rows.length}`);
+    res.json(rows);
   } catch (error) {
     console.error('❌ Ошибка загрузки платежей:', error);
     res.status(500).json({ error: error.message });
+  } finally {
+    if (connection) connection.release();
   }
 });
 
 // Добавить платеж (только для администратора)
 app.post('/api/payments', async (req, res) => {
+  let connection;
   try {
     const token = req.headers.authorization;
     
@@ -494,80 +566,97 @@ app.post('/api/payments', async (req, res) => {
     // Извлекаем admin_id из токена (admin-token-1 → 1)
     const adminId = parseInt(token.split('-').pop());
 
-    const result = await pool.query(
+    connection = await pool.getConnection();
+    const [result] = await connection.execute(
       `INSERT INTO payments (student_id, payment_date, amount, description, created_by) 
-       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+       VALUES (?, ?, ?, ?, ?)`,
       [student_id, payment_date, amount, description, adminId]
     );
 
-    console.log('✅ Платеж добавлен:', result.rows[0]);
-    res.status(201).json(result.rows[0]);
+    console.log('✅ Платеж добавлен, ID:', result.insertId);
+    
+    // Получаем добавленную запись
+    const [rows] = await connection.execute(
+      'SELECT * FROM payments WHERE id = ?',
+      [result.insertId]
+    );
+
+    res.status(201).json(rows[0]);
   } catch (error) {
     console.error('❌ Ошибка добавления платежа:', error);
     res.status(500).json({ error: error.message });
+  } finally {
+    if (connection) connection.release();
   }
 });
 
 // Получить баланс студента
 app.get('/api/students/:id/balance', async (req, res) => {
+  let connection;
   try {
     const studentId = req.params.id;
     const token = req.headers.authorization;
     
+    connection = await pool.getConnection();
+    
     // Проверка прав доступа для родителя
     if (token && token.includes('parent-token')) {
       const parentId = parseInt(token.split('-').pop());
-      const studentCheck = await pool.query(
-        'SELECT * FROM students WHERE id = $1 AND parent_id = $2',
+      const [studentCheck] = await connection.execute(
+        'SELECT * FROM students WHERE id = ? AND parent_id = ?',
         [studentId, parentId]
       );
       
-      if (studentCheck.rows.length === 0) {
+      if (studentCheck.length === 0) {
         return res.status(403).json({ error: 'Доступ запрещен' });
       }
     }
 
-    const result = await pool.query(
-      'SELECT public.get_student_balance($1, CURRENT_DATE) as balance',
+    const [rows] = await connection.execute(
+      'SELECT COALESCE(SUM(amount), 0) as balance FROM payments WHERE student_id = ?',
       [studentId]
     );
 
-    res.json({ balance: parseFloat(result.rows[0].balance) });
+    res.json({ balance: parseFloat(rows[0].balance) });
   } catch (error) {
     console.error('❌ Ошибка получения баланса:', error);
     res.status(500).json({ error: error.message });
+  } finally {
+    if (connection) connection.release();
   }
 });
 
 // Проверка данных в БД
-// Диагностика подключения
 app.get('/api/debug/connection', async (req, res) => {
+  let connection;
   try {
-    const client = await pool.connect();
-    const dbInfo = await client.query('SELECT NOW() as time, version() as version');
+    connection = await pool.getConnection();
+    const [dbInfo] = await connection.execute('SELECT NOW() as time, VERSION() as version');
     
-    const tables = await client.query(`
-      SELECT table_name 
-      FROM information_schema.tables 
-      WHERE table_schema = 'public'
-    `);
+    const [tables] = await connection.execute(`
+      SELECT TABLE_NAME as table_name
+      FROM INFORMATION_SCHEMA.TABLES 
+      WHERE TABLE_SCHEMA = ?
+    `, [process.env.DB_NAME || 'u2765882_food_accounting']);
     
-    client.release();
+    connection.release();
     
     res.json({
       status: 'connected',
-      database_time: dbInfo.rows[0].time,
-      version: dbInfo.rows[0].version.split('\n')[0],
-      tables: tables.rows.map(t => t.table_name),
+      database_time: dbInfo[0].time,
+      version: dbInfo[0].version,
+      tables: tables.map(t => t.table_name),
       environment: {
         node_env: process.env.NODE_ENV,
         has_database_url: !!process.env.DATABASE_URL,
         db_host: process.env.DB_HOST,
-        db_name: process.env.DB_NAME
+        db_name: process.env.DB_NAME,
+        db_type: 'MySQL'
       }
     });
     
   } catch (error) {
+    if (connection) connection.release();
     res.status(500).json({
       status: 'disconnected',
       error: error.message,
@@ -575,7 +664,8 @@ app.get('/api/debug/connection', async (req, res) => {
         node_env: process.env.NODE_ENV,
         has_database_url: !!process.env.DATABASE_URL,
         db_host: process.env.DB_HOST,
-        db_name: process.env.DB_NAME
+        db_name: process.env.DB_NAME,
+        db_type: 'MySQL'
       }
     });
   }
@@ -587,6 +677,7 @@ app.listen(PORT, () => {
   console.log(`🚀 Сервер запущен на порту ${PORT}`);
   console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`🔗 DATABASE_URL: ${process.env.DATABASE_URL ? 'есть' : 'нет'}`);
+  console.log(`🗄️  DB Type: MySQL`);
   console.log('='.repeat(50));
   console.log('✅ Тестовые данные для входа:');
   console.log('   Админ: Тест админ / 1357911Dan');
