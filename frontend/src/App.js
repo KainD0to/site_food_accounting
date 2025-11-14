@@ -297,32 +297,36 @@ function AdminDashboard({ user, onLogout, onNotification }) {
   };
 
   const fetchPayments = async (studentId) => {
-    try {
-      const token = localStorage.getItem('token');
-      console.log('🔐 Token для истории:', token);
-      
-      const response = await fetch(`${API_BASE}/api/students/${studentId}/payments`, {
-        headers: {
-          'Authorization': token
-        }
-      });
-      
-      console.log('📊 Статус ответа истории:', response.status);
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `Ошибка: ${response.status}`);
+  try {
+    const token = localStorage.getItem('token');
+    console.log('🔐 Загрузка платежей студента ID:', studentId);
+    
+    const response = await fetch(`${API_BASE}/api/students/${studentId}/payments`, {
+      headers: {
+        'Authorization': token
       }
-      
-      const data = await response.json();
-      console.log('📋 Данные истории:', data);
-      setPayments(data);
-      setSelectedStudent(studentId);
-    } catch (error) {
-      console.error('❌ Ошибка загрузки платежей:', error);
-      onNotification('Ошибка загрузки платежей: ' + error.message, 'error');
+    });
+    
+    console.log('📊 Статус ответа платежей:', response.status);
+    
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || `Ошибка: ${response.status}`);
     }
-  };
+    
+    const data = await response.json();
+    console.log('📋 Данные платежей:', data);
+    setPayments(data);
+    setSelectedStudent(studentId);
+    
+    // Показываем уведомление об успехе
+    onNotification(`Загружена история платежей`, 'success');
+    
+  } catch (error) {
+    console.error('❌ Ошибка загрузки платежей:', error);
+    onNotification('Ошибка загрузки платежей: ' + error.message, 'error');
+  }
+};
 
   const handleAddPayment = async () => {
     try {
@@ -388,58 +392,59 @@ function AdminDashboard({ user, onLogout, onNotification }) {
         ) : (
           <>
             <TableContainer component={Paper} sx={{ mt: 2 }}>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell><strong>ФИО студента</strong></TableCell>
-                    <TableCell><strong>ID студента</strong></TableCell>
-                    <TableCell><strong>Родитель</strong></TableCell>
-                    <TableCell><strong>Баланс</strong></TableCell>
-                    <TableCell><strong>Действия</strong></TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {students.map((student) => (
-                    <TableRow key={student.id} hover>
-                      <TableCell>{student.full_name}</TableCell>
-                      <TableCell>{student.student_id}</TableCell>
-                      <TableCell>{student.parent_name || 'Не указан'}</TableCell>
-                      <TableCell>
-                        <Typography 
-                          variant="body1" 
-                          sx={{ 
-                            color: student.balance > 0 ? 'success.main' : 'error.main',
-                            fontWeight: 'bold'
-                          }}
-                        >
-                          {student.balance} ₽
-                        </Typography>
-                      </TableCell>
-                      <TableCell>
-                        <Button 
-                          onClick={() => fetchPayments(student.id)}
-                          sx={{ mr: 1 }}
-                          variant="outlined"
-                          size="small"
-                        >
-                          История
-                        </Button>
-                        <Button 
-                          variant="contained"
-                          size="small"
-                          onClick={() => {
-                            setSelectedStudent(student.id);
-                            setPaymentDialogOpen(true);
-                          }}
-                        >
-                          Пополнить
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
+  <Table>
+    <TableHead>
+      <TableRow>
+        <TableCell><strong>ФИО студента</strong></TableCell>
+        <TableCell><strong>ID студента</strong></TableCell>
+        <TableCell><strong>Баланс</strong></TableCell>
+        <TableCell><strong>Действия</strong></TableCell>
+      </TableRow>
+    </TableHead>
+    <TableBody>
+      {students.map((student) => (
+        <TableRow key={student.id} hover>
+          <TableCell>{student.full_name}</TableCell>
+          <TableCell>{student.student_id}</TableCell>
+          <TableCell>
+            <Typography 
+              variant="body1" 
+              sx={{ 
+                color: student.balance > 0 ? 'success.main' : 'error.main',
+                fontWeight: 'bold'
+              }}
+            >
+              {student.balance} ₽
+            </Typography>
+          </TableCell>
+          <TableCell>
+            <Button 
+              onClick={() => {
+                console.log('🖱️ Клик по истории студента ID:', student.id);
+                fetchPayments(student.id);
+              }}
+              sx={{ mr: 1 }}
+              variant="outlined"
+              size="small"
+            >
+              История
+            </Button>
+            <Button 
+              variant="contained"
+              size="small"
+              onClick={() => {
+                setSelectedStudent(student.id);
+                setPaymentDialogOpen(true);
+              }}
+            >
+              Пополнить
+            </Button>
+          </TableCell>
+        </TableRow>
+      ))}
+    </TableBody>
+  </Table>
+</TableContainer>
 
             {students.length === 0 && (
               <Typography variant="body1" color="text.secondary" align="center" sx={{ mt: 4 }}>
