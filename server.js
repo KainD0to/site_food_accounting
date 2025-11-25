@@ -35,17 +35,7 @@ console.log('🔧 Проверка переменных окружения...');
 
 let poolConfig;
 
-if (process.env.DATABASE_URL) {
-  poolConfig = {
-    uri: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false },
-    connectTimeout: 60000,
-    acquireTimeout: 60000,
-    timeout: 60000,
-    reconnect: true
-  };
-  console.log('🎯 Используем DATABASE_URL');
-} else if (process.env.DB_HOST) {
+if (process.env.DB_HOST) {
   poolConfig = {
     host: process.env.DB_HOST,
     port: process.env.DB_PORT || 3306,
@@ -56,16 +46,19 @@ if (process.env.DATABASE_URL) {
     connectTimeout: 60000,
     acquireTimeout: 60000,
     timeout: 60000,
-    reconnect: true
+    reconnect: true,
   };
-  console.log('🎯 Используем отдельные параметры БД');
+  console.log('🎯 Используем внешнюю БД');
 } else {
   poolConfig = {
     host: 'localhost',
     port: 3306,
     database: 'food_accounting_db',
     user: 'root',
-    password: 'password'
+    password: 'password',
+    connectTimeout: 60000,
+    acquireTimeout: 60000,
+    timeout: 60000,
   };
   console.log('🎯 Используем локальную БД');
 }
@@ -87,7 +80,7 @@ async function initializeDatabase() {
       )
     `);
 
-    // Создаем таблицу students (БЕЗ parent_id)
+    // Создаем таблицу students
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS students (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -105,71 +98,20 @@ async function initializeDatabase() {
         payment_date DATE NOT NULL,
         amount DECIMAL(10,2) NOT NULL,
         description TEXT NOT NULL,
+        is_deleted BOOLEAN DEFAULT FALSE,
+        deleted_at TIMESTAMP NULL,
+        deleted_by INT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         created_by INT
       )
     `);
 
     console.log('✅ Таблицы созданы/проверены');
-
-    // Добавляем тестовые данные
-    await addTestData(connection);
     
   } catch (error) {
     console.error('❌ Ошибка инициализации БД:', error);
   } finally {
     if (connection) connection.release();
-  }
-}
-
-async function addTestData(connection) {
-  try {
-    // Проверяем есть ли уже данные
-    const [adminCount] = await connection.execute('SELECT COUNT(*) as count FROM admin');
-    const [studentCount] = await connection.execute('SELECT COUNT(*) as count FROM students');
-
-    if (adminCount[0].count === 0) {
-      console.log('🧪 Добавляем тестовые данные...');
-      
-      // Администратор
-      await connection.execute(
-        'INSERT INTO admin (full_name, password) VALUES (?, ?)',
-        ['Тест админ', '1357911Dan']
-      );
-
-      // Студенты (БЕЗ parent_id)
-      await connection.execute(
-        'INSERT INTO students (full_name, student_id, balance) VALUES (?, ?, ?)',
-        ['Иванов Алексей', 1, 1500.00]
-      );
-
-      await connection.execute(
-        'INSERT INTO students (full_name, student_id, balance) VALUES (?, ?, ?)',
-        ['Петрова Мария', 2, 800.50]
-      );
-
-      await connection.execute(
-        'INSERT INTO students (full_name, student_id, balance) VALUES (?, ?, ?)',
-        ['Сидоров Дмитрий', 3, 1200.00]
-      );
-
-      // Платежи
-      await connection.execute(
-        `INSERT INTO payments (student_id, payment_date, amount, description, created_by) 
-         VALUES (?, ?, ?, ?, ?)`,
-        [1, '2024-01-15', 500.00, 'Оплата питания за январь', 1]
-      );
-
-      await connection.execute(
-        `INSERT INTO payments (student_id, payment_date, amount, description, created_by) 
-         VALUES (?, ?, ?, ?, ?)`,
-        [1, '2024-02-10', 1000.00, 'Оплата питания за февраль', 1]
-      );
-
-      console.log('✅ Тестовые данные добавлены');
-    }
-  } catch (error) {
-    console.error('❌ Ошибка добавления тестовых данных:', error);
   }
 }
 
@@ -184,6 +126,99 @@ setTimeout(async () => {
 }, 1000);
 
 // ==================== ROUTES ====================
+
+// Удалить платеж
+app.delete('/api/payments/:id', async (req, res) => {
+  let connection;
+  try {
+    const paymentId = req.params.id;
+    const token = req.headers.authorization;
+    
+    console.log('🗑️ Попытка удаления платежа:', paymentId);
+    
+    if (!token || !token.includes('admin-token')) {
+      return res.status(403).json({ error: 'Доступ запрещен' });
+    }
+
+    connection = await pool.getConnection();
+    
+    // Проверяем существование платежа
+    const [paymentRows] = await connection.execute(
+      'SELECT * FROM payments WHERE id = ?',
+      [paymentId]
+    );
+
+    if (paymentRows.length === 0) {
+      return res.status(404).json({ error: 'Платеж не найден' });
+    }
+
+    await connection.execute(
+      `UPDATE payments SET is_deleted = TRUE WHERE id = ?`,
+      [paymentId]
+    );
+
+    console.log('✅ Платеж помечен как удаленный:', paymentId);
+    res.json({ 
+      message: 'Платеж помечен как удаленный',
+      success: true 
+    });
+  } catch (error) {
+    console.error('❌ Ошибка удаления платежа:', error);
+    res.status(500).json({ 
+      error: 'Ошибка при удалении платежа',
+      details: error.message 
+    });
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+// Восстановить платеж
+app.post('/api/payments/:id/restore', async (req, res) => {
+  let connection;
+  try {
+    const paymentId = req.params.id;
+    const token = req.headers.authorization;
+    
+    console.log('↩️ Попытка восстановления платежа:', paymentId);
+    
+    if (!token || !token.includes('admin-token')) {
+      return res.status(403).json({ error: 'Доступ запрещен' });
+    }
+
+    connection = await pool.getConnection();
+    
+    // Проверяем существование платежа
+    const [paymentRows] = await connection.execute(
+      'SELECT * FROM payments WHERE id = ?',
+      [paymentId]
+    );
+
+    if (paymentRows.length === 0) {
+      return res.status(404).json({ error: 'Платеж не найден' });
+    }
+
+    // Восстанавливаем запись
+    await connection.execute(
+      `UPDATE payments SET is_deleted = FALSE WHERE id = ?`,
+      [paymentId]
+    );
+
+    console.log('✅ Платеж восстановлен:', paymentId);
+    res.json({ 
+      message: 'Платеж восстановлен',
+      success: true 
+    });
+  } catch (error) {
+    console.error('❌ Ошибка восстановления платежа:', error);
+    res.status(500).json({ 
+      error: 'Ошибка при восстановлении платежа',
+      details: error.message 
+    });
+  } finally {
+    if (connection) connection.release();
+  }
+});
 
 // Health check
 app.get('/', (req, res) => {
@@ -256,7 +291,7 @@ app.post('/api/admin/login', async (req, res) => {
   }
 });
 
-// Упрощенный вход по ID студента (БЕЗ родителей)
+// Упрощенный вход по ID студента
 app.get('/api/student/login/:studentId', async (req, res) => {
   let connection;
   try {
@@ -265,7 +300,7 @@ app.get('/api/student/login/:studentId', async (req, res) => {
     connection = await pool.getConnection();
     const [rows] = await connection.execute(`
       SELECT s.*,
-      (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE student_id = s.id) as balance
+      (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE student_id = s.id AND is_deleted = FALSE) as balance
       FROM students s 
       WHERE s.student_id = ?
     `, [studentId]);
@@ -299,7 +334,7 @@ app.get('/api/student/login/:studentId', async (req, res) => {
   }
 });
 
-// Получить всех студентов (для админа) - УПРОЩЕННЫЙ ЗАПРОС
+// Получить всех студентов (для админа)
 app.get('/api/students', async (req, res) => {
   let connection;
   try {
@@ -312,7 +347,7 @@ app.get('/api/students', async (req, res) => {
     connection = await pool.getConnection();
     const [rows] = await connection.execute(`
       SELECT s.*,
-      (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE student_id = s.id) as balance
+      (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE student_id = s.id AND is_deleted = FALSE) as balance
       FROM students s 
       ORDER BY s.full_name
     `);
@@ -339,7 +374,10 @@ app.get('/api/students/:id/payments', async (req, res) => {
 
     connection = await pool.getConnection();
     const [rows] = await connection.execute(
-      'SELECT * FROM payments WHERE student_id = ? ORDER BY payment_date DESC, created_at DESC',
+      `SELECT *, 
+       CASE WHEN is_deleted = TRUE THEN CONCAT(description, ' (УДАЛЕНО)') ELSE description END as display_description
+       FROM payments WHERE student_id = ? 
+       ORDER BY payment_date DESC, created_at DESC`,
       [studentId]
     );
 
@@ -372,7 +410,7 @@ app.post('/api/payments', async (req, res) => {
     const [result] = await connection.execute(
       `INSERT INTO payments (student_id, payment_date, amount, description, created_by) 
        VALUES (?, ?, ?, ?, ?)`,
-      [student_id, payment_date, amount, description, 1] // created_by = 1 (админ)
+      [student_id, payment_date, amount, description, 1]
     );
 
     // Получаем добавленную запись
@@ -385,6 +423,104 @@ app.post('/api/payments', async (req, res) => {
   } catch (error) {
     console.error('❌ Ошибка добавления платежа:', error);
     res.status(500).json({ error: error.message });
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+// Удалить платеж
+app.delete('/api/payments/:id', async (req, res) => {
+  let connection;
+  try {
+    const paymentId = req.params.id;
+    const token = req.headers.authorization;
+    
+    console.log('🗑️ Попытка удаления платежа:', paymentId);
+    
+    if (!token || !token.includes('admin-token')) {
+      return res.status(403).json({ error: 'Доступ запрещен' });
+    }
+
+    connection = await pool.getConnection();
+    
+    // Проверяем существование платежа
+    const [paymentRows] = await connection.execute(
+      'SELECT * FROM payments WHERE id = ?',
+      [paymentId]
+    );
+
+    if (paymentRows.length === 0) {
+      return res.status(404).json({ error: 'Платеж не найден' });
+    }
+
+    // Помечаем запись как удаленную
+    await connection.execute(
+      `UPDATE payments 
+       SET is_deleted = TRUE, deleted_at = CURRENT_TIMESTAMP, deleted_by = 1 
+       WHERE id = ?`,
+      [paymentId]
+    );
+
+    console.log('✅ Платеж помечен как удаленный:', paymentId);
+    res.json({ 
+      message: 'Платеж помечен как удаленный',
+      success: true 
+    });
+  } catch (error) {
+    console.error('❌ Ошибка удаления платежа:', error);
+    res.status(500).json({ 
+      error: 'Ошибка при удалении платежа',
+      details: error.message 
+    });
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+// Восстановить платеж
+app.post('/api/payments/:id/restore', async (req, res) => {
+  let connection;
+  try {
+    const paymentId = req.params.id;
+    const token = req.headers.authorization;
+    
+    console.log('↩️ Попытка восстановления платежа:', paymentId);
+    
+    if (!token || !token.includes('admin-token')) {
+      return res.status(403).json({ error: 'Доступ запрещен' });
+    }
+
+    connection = await pool.getConnection();
+    
+    // Проверяем существование платежа
+    const [paymentRows] = await connection.execute(
+      'SELECT * FROM payments WHERE id = ?',
+      [paymentId]
+    );
+
+    if (paymentRows.length === 0) {
+      return res.status(404).json({ error: 'Платеж не найден' });
+    }
+
+    // Восстанавливаем запись
+    await connection.execute(
+      `UPDATE payments 
+       SET is_deleted = FALSE, deleted_at = NULL, deleted_by = NULL 
+       WHERE id = ?`,
+      [paymentId]
+    );
+
+    console.log('✅ Платеж восстановлен:', paymentId);
+    res.json({ 
+      message: 'Платеж восстановлен',
+      success: true 
+    });
+  } catch (error) {
+    console.error('❌ Ошибка восстановления платежа:', error);
+    res.status(500).json({ 
+      error: 'Ошибка при восстановлении платежа',
+      details: error.message 
+    });
   } finally {
     if (connection) connection.release();
   }

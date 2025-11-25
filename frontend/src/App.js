@@ -26,8 +26,13 @@ import {
   Snackbar,
   Alert,
   Tabs,
-  Tab
+  Tab,
+  Chip,
+  IconButton,
+  Tooltip
 } from '@mui/material';
+import DeleteIcon from '@mui/icons-material/Delete';
+import RestoreIcon from '@mui/icons-material/Restore';
 
 const API_BASE = window.location.hostname === 'localhost' 
   ? 'http://localhost:5000'
@@ -358,6 +363,54 @@ function AdminDashboard({ user, onLogout, onNotification }) {
     }
   };
 
+  const handleDeletePayment = async (paymentId) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API_BASE}/api/payments/${paymentId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': token
+        }
+      });
+
+      if (!response.ok) throw new Error('Ошибка удаления');
+      
+      onNotification('Платеж помечен как удаленный', 'success');
+      
+      // Обновляем данные
+      fetchStudents();
+      if (expandedStudent) {
+        fetchPayments(expandedStudent);
+      }
+    } catch (error) {
+      onNotification('Ошибка удаления платежа: ' + error.message, 'error');
+    }
+  };
+
+  const handleRestorePayment = async (paymentId) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API_BASE}/api/payments/${paymentId}/restore`, {
+        method: 'POST',
+        headers: {
+          'Authorization': token
+        }
+      });
+
+      if (!response.ok) throw new Error('Ошибка восстановления');
+      
+      onNotification('Платеж восстановлен', 'success');
+      
+      // Обновляем данные
+      fetchStudents();
+      if (expandedStudent) {
+        fetchPayments(expandedStudent);
+      }
+    } catch (error) {
+      onNotification('Ошибка восстановления платежа: ' + error.message, 'error');
+    }
+  };
+
   return (
     <Box>
       <AppBar position="static">
@@ -459,23 +512,73 @@ function AdminDashboard({ user, onLogout, onNotification }) {
                                       <TableCell><strong>Дата</strong></TableCell>
                                       <TableCell><strong>Сумма</strong></TableCell>
                                       <TableCell><strong>Описание</strong></TableCell>
+                                      <TableCell><strong>Статус</strong></TableCell>
+                                      <TableCell><strong>Действия</strong></TableCell>
                                     </TableRow>
                                   </TableHead>
                                   <TableBody>
                                     {payments[student.id].map((payment) => (
-                                      <TableRow key={payment.id}>
+                                      <TableRow 
+                                        key={payment.id}
+                                        sx={{ 
+                                          backgroundColor: payment.is_deleted ? '#fff8e1' : 'inherit',
+                                          textDecoration: payment.is_deleted ? 'line-through' : 'none'
+                                        }}
+                                      >
                                         <TableCell>{payment.payment_date}</TableCell>
                                         <TableCell>
                                           <Typography 
                                             sx={{ 
-                                              color: payment.amount > 0 ? 'success.main' : 'error.main',
-                                              fontWeight: 'bold'
+                                              color: payment.amount > 0 && !payment.is_deleted ? 'success.main' : 'text.secondary',
+                                              fontWeight: payment.is_deleted ? 'normal' : 'bold'
                                             }}
                                           >
                                             {payment.amount} ₽
                                           </Typography>
                                         </TableCell>
-                                        <TableCell>{payment.description}</TableCell>
+                                        <TableCell>
+                                          {payment.display_description || payment.description}
+                                        </TableCell>
+                                        <TableCell>
+                                          {payment.is_deleted ? (
+                                            <Chip 
+                                              label="Удален" 
+                                              size="small" 
+                                              color="error" 
+                                              variant="outlined"
+                                            />
+                                          ) : (
+                                            <Chip 
+                                              label="Активен" 
+                                              size="small" 
+                                              color="success" 
+                                              variant="outlined"
+                                            />
+                                          )}
+                                        </TableCell>
+                                        <TableCell>
+                                          {payment.is_deleted ? (
+                                            <Tooltip title="Восстановить платеж">
+                                              <IconButton 
+                                                size="small" 
+                                                color="primary"
+                                                onClick={() => handleRestorePayment(payment.id)}
+                                              >
+                                                <RestoreIcon />
+                                              </IconButton>
+                                            </Tooltip>
+                                          ) : (
+                                            <Tooltip title="Удалить платеж">
+                                              <IconButton 
+                                                size="small" 
+                                                color="error"
+                                                onClick={() => handleDeletePayment(payment.id)}
+                                              >
+                                                <DeleteIcon />
+                                              </IconButton>
+                                            </Tooltip>
+                                          )}
+                                        </TableCell>
                                       </TableRow>
                                     ))}
                                   </TableBody>
@@ -649,14 +752,46 @@ function ParentDashboard({ user, onLogout, onNotification }) {
                     <TableCell>Дата</TableCell>
                     <TableCell>Сумма</TableCell>
                     <TableCell>Описание</TableCell>
+                    <TableCell>Статус</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {payments.map((payment) => (
-                    <TableRow key={payment.id}>
+                    <TableRow 
+                      key={payment.id}
+                      sx={{ 
+                        backgroundColor: payment.is_deleted ? '#fff8e1' : 'inherit',
+                        textDecoration: payment.is_deleted ? 'line-through' : 'none'
+                      }}
+                    >
                       <TableCell>{payment.payment_date}</TableCell>
-                      <TableCell>{payment.amount} ₽</TableCell>
-                      <TableCell>{payment.description}</TableCell>
+                      <TableCell>
+                        <Typography 
+                          sx={{ 
+                            color: payment.amount > 0 && !payment.is_deleted ? 'success.main' : 'text.secondary'
+                          }}
+                        >
+                          {payment.amount} ₽
+                        </Typography>
+                      </TableCell>
+                      <TableCell>{payment.display_description || payment.description}</TableCell>
+                      <TableCell>
+                        {payment.is_deleted ? (
+                          <Chip 
+                            label="Удален" 
+                            size="small" 
+                            color="error" 
+                            variant="outlined"
+                          />
+                        ) : (
+                          <Chip 
+                            label="Активен" 
+                            size="small" 
+                            color="success" 
+                            variant="outlined"
+                          />
+                        )}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
