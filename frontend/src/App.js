@@ -263,9 +263,24 @@ function AdminDashboard({ user, onLogout, onNotification }) {
   const [paymentData, setPaymentData] = useState({
     amount: '',
     description: '',
-    payment_date: new Date().toISOString().split('T')[0]
+    payment_date: new Date().toLocaleDateString('ru-RU') // будет "25.11.2025"
+      .split('.')
+      .map(part => part.padStart(2, '0')) // добавляем ведущие нули
+      .join('-') // получаем "25-11-2025"
   });
   const [loading, setLoading] = useState(false);
+  const formatDateForBackend = (dateStr) => {
+    const parts = dateStr.split('-');
+    if (parts.length === 3) {
+      return `${parts[2]}-${parts[1]}-${parts[0]}`; // в гггг-мм-дд
+    }
+    return dateStr;
+  };
+  const formatDateForDisplay = (dateStr) => {
+    if (!dateStr) return '';
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('ru-RU'); // дд.мм.гггг
+  };
 
   useEffect(() => {
     fetchStudents();

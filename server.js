@@ -26,11 +26,23 @@ app.options('*', cors());
 
 // Остальные middleware ПОСЛЕ CORS
 app.use(helmet());
-app.use(express.json());
+app.use(express.json({
+  verify: (req, res, buf) => {
+    try {
+      JSON.parse(buf);
+    } catch (e) {
+      res.status(400).json({ error: 'Invalid JSON' });
+      throw new Error('Invalid JSON');
+    }
+  }
+}));
 
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 1000, // увеличить с 100 до 1000
+  message: {
+    error: 'Слишком много запросов, попробуйте позже'
+  }
 });
 app.use(limiter);
 
@@ -422,6 +434,32 @@ app.post('/api/payments', async (req, res) => {
       return res.status(400).json({ error: 'Сумма должна быть числом' });
     }
 
+    // Конвертируем дату из дд-мм-гггг в гггг-мм-дд для MySQL
+    const convertDateToMySQL = (dateStr) => {
+      // Если дата не указана, используем сегодняшнюю
+      if (!dateStr) {
+        return new Date().toISOString().split('T')[0]; // гггг-мм-дд
+      }
+      
+      // Если дата уже в формате гггг-мм-дд, оставляем как есть
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+        return dateStr;
+      }
+      
+      // Конвертируем из дд-мм-гггг в гггг-мм-дд
+      const parts = dateStr.split('-');
+      if (parts.length === 3 && parts[0].length === 2 && parts[1].length === 2 && parts[2].length === 4) {
+        return `${parts[2]}-${parts[1]}-${parts[0]}`;
+      }
+      
+      // Если формат непонятный, используем текущую дату
+      console.warn('⚠️ Неизвестный формат даты, используем текущую:', dateStr);
+      return new Date().toISOString().split('T')[0];
+    };
+
+    const mysqlDate = convertDateToMySQL(payment_date);
+    console.log('📅 Конвертированная дата:', payment_date, '->', mysqlDate);
+
     connection = await pool.getConnection();
     
     // Проверяем существование студента
@@ -438,7 +476,7 @@ app.post('/api/payments', async (req, res) => {
     const [result] = await connection.execute(
       `INSERT INTO payments (student_id, payment_date, amount, description, created_by) 
        VALUES (?, ?, ?, ?, ?)`,
-      [student_id, payment_date, amountNumber, description, 1]
+      [student_id, mysqlDate, amountNumber, description, 1]
     );
 
     // Получаем добавленную запись
