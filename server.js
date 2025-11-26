@@ -9,16 +9,7 @@ dotenv.config();
 
 const app = express();
 
-// ==================== MIDDLEWARE ====================
-app.use(helmet());
-
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100
-});
-app.use(limiter);
-
-// НАСТРОЙКИ CORS ДЛЯ RENDER
+// ==================== CORS ДОЛЖЕН БЫТЬ ПЕРВЫМ ====================
 app.use(cors({
   origin: [
     'https://site-food-accounting-frontend.onrender.com',
@@ -30,10 +21,18 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
 
-// Обработка preflight запросов
+// Явно обрабатываем OPTIONS для всех routes
 app.options('*', cors());
 
+// Остальные middleware ПОСЛЕ CORS
+app.use(helmet());
 app.use(express.json());
+
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100
+});
+app.use(limiter);
 
 // ==================== БАЗА ДАННЫХ ====================
 
