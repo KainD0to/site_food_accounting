@@ -402,15 +402,38 @@ app.post('/api/payments', async (req, res) => {
 
     const { student_id, payment_date, amount, description } = req.body;
     
-    if (!student_id || !amount || !description) {
+    console.log('💰 Данные для добавления платежа:', {
+      student_id, payment_date, amount, description
+    });
+    
+    // Валидация
+    if (!student_id || amount === undefined || amount === null || !description) {
       return res.status(400).json({ error: 'Заполните все обязательные поля' });
     }
 
+    // Преобразуем amount в число (может быть отрицательным)
+    const amountNumber = parseFloat(amount);
+    if (isNaN(amountNumber)) {
+      return res.status(400).json({ error: 'Сумма должна быть числом' });
+    }
+
     connection = await pool.getConnection();
+    
+    // Проверяем существование студента
+    const [studentRows] = await connection.execute(
+      'SELECT id FROM students WHERE id = ?',
+      [student_id]
+    );
+
+    if (studentRows.length === 0) {
+      return res.status(404).json({ error: 'Студент не найден' });
+    }
+
+    // Добавляем платеж (разрешаем отрицательные значения)
     const [result] = await connection.execute(
       `INSERT INTO payments (student_id, payment_date, amount, description, created_by) 
        VALUES (?, ?, ?, ?, ?)`,
-      [student_id, payment_date, amount, description, 1]
+      [student_id, payment_date, amountNumber, description, 1]
     );
 
     // Получаем добавленную запись
@@ -419,10 +442,21 @@ app.post('/api/payments', async (req, res) => {
       [result.insertId]
     );
 
+    console.log('✅ Платеж добавлен:', rows[0]);
     res.status(201).json(rows[0]);
+    
   } catch (error) {
     console.error('❌ Ошибка добавления платежа:', error);
-    res.status(500).json({ error: error.message });
+    console.error('🔧 Детали ошибки:', {
+      message: error.message,
+      code: error.code,
+      sqlMessage: error.sqlMessage
+    });
+    
+    res.status(500).json({ 
+      error: 'Ошибка при добавлении платежа',
+      details: error.message 
+    });
   } finally {
     if (connection) connection.release();
   }
