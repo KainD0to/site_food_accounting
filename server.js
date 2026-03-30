@@ -1,22 +1,23 @@
-import express from 'express';
-import mysql from 'mysql2/promise';
-import cors from 'cors';
-import helmet from 'helmet';
-import rateLimit from 'express-rate-limit';
-import dotenv from 'dotenv';
+import express from 'express'; // Фреймворк для создания сервера
+import mysql from 'mysql2/promise'; // Драйвер для работы с MySQL (promise версия)
+import cors from 'cors'; // Защита от CORS ошибок при запросах с разных доменов
+import helmet from 'helmet'; // Набор middleware для безопасности HTTP заголовков
+import rateLimit from 'express-rate-limit'; // Ограничивает количество запросов от одного IP
+import dotenv from 'dotenv'; // Загружает переменные окружения из .env файла
 
-dotenv.config();
+dotenv.config(); // Активируем загрузку .env файла
 
-const app = express();
+const app = express(); // Создаем экземпляр приложения
 
-// ==================== CORS ДОЛЖЕН БЫТЬ ПЕРВЫМ ====================
+// ==================== CORS ====================
+// CORS настройки - разрешаем запросы только с указанных адресов
 app.use(cors({
   origin: [
     'https://site-food-accounting-frontend.onrender.com',
     'http://localhost:3000',
     'http://localhost:5173'
   ],
-  credentials: true,
+  credentials: true, // Разрешаем передачу куки и заголовков авторизации
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
@@ -24,7 +25,6 @@ app.use(cors({
 // Явно обрабатываем OPTIONS для всех routes
 app.options('*', cors());
 
-// Остальные middleware ПОСЛЕ CORS
 app.use(helmet());
 app.use(express.json({
   verify: (req, res, buf) => {
@@ -38,17 +38,17 @@ app.use(express.json({
 }));
 
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 1000, // увеличить с 100 до 1000
-  message: {
+  windowMs: 15 * 60 * 1000, // Временное окно - 15 минут (миллисекунды)
+  max: 1000, // Максимум запросов за окно с одного IP
+  message: { // Сообщение при превышении лимита
     error: 'Слишком много запросов, попробуйте позже'
   }
 });
-app.use(limiter);
+app.use(limiter); // Применяем ограничитель ко всем запросам
 
 // ==================== БАЗА ДАННЫХ ====================
 
-console.log('🔧 Проверка переменных окружения...');
+console.log('Проверка переменных окружения...');
 
 let poolConfig;
 
@@ -65,7 +65,7 @@ if (process.env.DB_HOST) {
     timeout: 60000,
     reconnect: true,
   };
-  console.log('🎯 Используем внешнюю БД');
+  console.log('Используем внешнюю БД');
 } else {
   poolConfig = {
     host: 'localhost',
@@ -77,7 +77,7 @@ if (process.env.DB_HOST) {
     acquireTimeout: 60000,
     timeout: 60000,
   };
-  console.log('🎯 Используем локальную БД');
+  console.log('Используем локальную БД');
 }
 
 const pool = mysql.createPool(poolConfig);
@@ -123,10 +123,10 @@ async function initializeDatabase() {
       )
     `);
 
-    console.log('✅ Таблицы созданы/проверены');
+    console.log('Таблицы созданы/проверены');
     
   } catch (error) {
-    console.error('❌ Ошибка инициализации БД:', error);
+    console.error('Ошибка инициализации БД:', error);
   } finally {
     if (connection) connection.release();
   }
@@ -136,9 +136,9 @@ async function initializeDatabase() {
 setTimeout(async () => {
   try {
     await initializeDatabase();
-    console.log('✅ Инициализация БД завершена');
+    console.log('Инициализация БД завершена');
   } catch (error) {
-    console.error('❌ Ошибка при инициализации:', error.message);
+    console.error('Ошибка при инициализации:', error.message);
   }
 }, 1000);
 
@@ -151,7 +151,7 @@ app.delete('/api/payments/:id', async (req, res) => {
     const paymentId = req.params.id;
     const token = req.headers.authorization;
     
-    console.log('🗑️ Попытка удаления платежа:', paymentId);
+    console.log('Попытка удаления платежа:', paymentId);
     
     if (!token || !token.includes('admin-token')) {
       return res.status(403).json({ error: 'Доступ запрещен' });
@@ -174,13 +174,13 @@ app.delete('/api/payments/:id', async (req, res) => {
       [paymentId]
     );
 
-    console.log('✅ Платеж помечен как удаленный:', paymentId);
+    console.log('Платеж помечен как удаленный:', paymentId);
     res.json({ 
       message: 'Платеж помечен как удаленный',
       success: true 
     });
   } catch (error) {
-    console.error('❌ Ошибка удаления платежа:', error);
+    console.error('Ошибка удаления платежа:', error);
     res.status(500).json({ 
       error: 'Ошибка при удалении платежа',
       details: error.message 
@@ -197,7 +197,7 @@ app.post('/api/payments/:id/restore', async (req, res) => {
     const paymentId = req.params.id;
     const token = req.headers.authorization;
     
-    console.log('↩️ Попытка восстановления платежа:', paymentId);
+    console.log('Попытка восстановления платежа:', paymentId);
     
     if (!token || !token.includes('admin-token')) {
       return res.status(403).json({ error: 'Доступ запрещен' });
@@ -221,13 +221,13 @@ app.post('/api/payments/:id/restore', async (req, res) => {
       [paymentId]
     );
 
-    console.log('✅ Платеж восстановлен:', paymentId);
+    console.log('Платеж восстановлен:', paymentId);
     res.json({ 
       message: 'Платеж восстановлен',
       success: true 
     });
   } catch (error) {
-    console.error('❌ Ошибка восстановления платежа:', error);
+    console.error('Ошибка восстановления платежа:', error);
     res.status(500).json({ 
       error: 'Ошибка при восстановлении платежа',
       details: error.message 
@@ -240,7 +240,7 @@ app.post('/api/payments/:id/restore', async (req, res) => {
 // Health check
 app.get('/', (req, res) => {
   res.json({ 
-    message: '✅ Backend работает!',
+    message: 'Backend работает!',
     environment: process.env.NODE_ENV || 'development',
     timestamp: new Date().toISOString()
   });
@@ -298,7 +298,7 @@ app.post('/api/admin/login', async (req, res) => {
     res.status(401).json({ error: 'Неверные учетные данные' });
     
   } catch (error) {
-    console.error('💥 Ошибка при входе:', error);
+    console.error('Ошибка при входе:', error);
     res.status(500).json({ 
       error: 'Внутренняя ошибка сервера',
       details: error.message 
@@ -341,7 +341,7 @@ app.get('/api/student/login/:studentId', async (req, res) => {
     }
     
   } catch (error) {
-    console.error('💥 Ошибка при входе:', error);
+    console.error('Ошибка при входе:', error);
     res.status(500).json({ 
       error: 'Внутренняя ошибка сервера',
       details: error.message 
@@ -371,7 +371,7 @@ app.get('/api/students', async (req, res) => {
     
     res.json(rows);
   } catch (error) {
-    console.error('❌ Ошибка загрузки учеников:', error);
+    console.error('Ошибка загрузки учеников:', error);
     res.status(500).json({ error: error.message });
   } finally {
     if (connection) connection.release();
@@ -400,7 +400,7 @@ app.get('/api/students/:id/payments', async (req, res) => {
 
     res.json(rows);
   } catch (error) {
-    console.error('❌ Ошибка загрузки платежей:', error);
+    console.error('Ошибка загрузки платежей:', error);
     res.status(500).json({ error: error.message });
   } finally {
     if (connection) connection.release();
@@ -419,7 +419,7 @@ app.post('/api/payments', async (req, res) => {
 
     const { student_id, payment_date, amount, description } = req.body;
     
-    console.log('💰 Данные для добавления платежа:', {
+    console.log('Данные для добавления платежа:', {
       student_id, payment_date, amount, description
     });
     
@@ -453,12 +453,12 @@ app.post('/api/payments', async (req, res) => {
       }
       
       // Если формат непонятный, используем текущую дату
-      console.warn('⚠️ Неизвестный формат даты, используем текущую:', dateStr);
+      console.warn('Неизвестный формат даты, используем текущую:', dateStr);
       return new Date().toISOString().split('T')[0];
     };
 
     const mysqlDate = convertDateToMySQL(payment_date);
-    console.log('📅 Конвертированная дата:', payment_date, '->', mysqlDate);
+    console.log('Конвертированная дата:', payment_date, '->', mysqlDate);
 
     connection = await pool.getConnection();
     
@@ -485,12 +485,12 @@ app.post('/api/payments', async (req, res) => {
       [result.insertId]
     );
 
-    console.log('✅ Платеж добавлен:', rows[0]);
+    console.log('Платеж добавлен:', rows[0]);
     res.status(201).json(rows[0]);
     
   } catch (error) {
-    console.error('❌ Ошибка добавления платежа:', error);
-    console.error('🔧 Детали ошибки:', {
+    console.error('Ошибка добавления платежа:', error);
+    console.error('Детали ошибки:', {
       message: error.message,
       code: error.code,
       sqlMessage: error.sqlMessage
@@ -512,7 +512,7 @@ app.delete('/api/payments/:id', async (req, res) => {
     const paymentId = req.params.id;
     const token = req.headers.authorization;
     
-    console.log('🗑️ Попытка удаления платежа:', paymentId);
+    console.log('Попытка удаления платежа:', paymentId);
     
     if (!token || !token.includes('admin-token')) {
       return res.status(403).json({ error: 'Доступ запрещен' });
@@ -538,13 +538,13 @@ app.delete('/api/payments/:id', async (req, res) => {
       [paymentId]
     );
 
-    console.log('✅ Платеж помечен как удаленный:', paymentId);
+    console.log('Платеж помечен как удаленный:', paymentId);
     res.json({ 
       message: 'Платеж помечен как удаленный',
       success: true 
     });
   } catch (error) {
-    console.error('❌ Ошибка удаления платежа:', error);
+    console.error('Ошибка удаления платежа:', error);
     res.status(500).json({ 
       error: 'Ошибка при удалении платежа',
       details: error.message 
@@ -561,7 +561,7 @@ app.post('/api/payments/:id/restore', async (req, res) => {
     const paymentId = req.params.id;
     const token = req.headers.authorization;
     
-    console.log('↩️ Попытка восстановления платежа:', paymentId);
+    console.log('Попытка восстановления платежа:', paymentId);
     
     if (!token || !token.includes('admin-token')) {
       return res.status(403).json({ error: 'Доступ запрещен' });
@@ -587,13 +587,13 @@ app.post('/api/payments/:id/restore', async (req, res) => {
       [paymentId]
     );
 
-    console.log('✅ Платеж восстановлен:', paymentId);
+    console.log('Платеж восстановлен:', paymentId);
     res.json({ 
       message: 'Платеж восстановлен',
       success: true 
     });
   } catch (error) {
-    console.error('❌ Ошибка восстановления платежа:', error);
+    console.error('Ошибка восстановления платежа:', error);
     res.status(500).json({ 
       error: 'Ошибка при восстановлении платежа',
       details: error.message 
@@ -638,7 +638,7 @@ app.get('/api/debug/connection', async (req, res) => {
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log('='.repeat(50));
-  console.log(`🚀 Сервер запущен на порту ${PORT}`);
-  console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`Сервер запущен на порту ${PORT}`);
+  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log('='.repeat(50));
 });
