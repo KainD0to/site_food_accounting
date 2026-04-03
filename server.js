@@ -4,10 +4,32 @@ import cors from 'cors'; // Защита от CORS ошибок при запр�
 import helmet from 'helmet'; // Набор middleware для безопасности HTTP заголовков
 import rateLimit from 'express-rate-limit'; // Ограничивает количество запросов от одного IP
 import dotenv from 'dotenv'; // Загружает переменные окружения из .env файла
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 
 dotenv.config(); // Активируем загрузку .env файла
 
 const app = express(); // Создаем экземпляр приложения
+const JWT_SECRET = process.env.JWT_SECRET;
+
+const authenticateAdmin = (req, res, next) => {
+  const token = req.headers.authorization;
+  
+  if (!token) {
+    return res.status(401).json({ error: 'Требуется авторизация' });
+  }
+  
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    if (decoded.role !== 'admin') {
+      return res.status(403).json({ error: 'Доступ запрещен' });
+    }
+    req.admin = decoded;
+    next();
+  } catch (error) {
+    return res.status(403).json({ error: 'Недействительный токен' });
+  }
+};
 
 // ==================== CORS ====================
 // CORS настройки - разрешаем запросы только с указанных адресов
@@ -93,7 +115,7 @@ async function initializeDatabase() {
       CREATE TABLE IF NOT EXISTS admin (
         id INT AUTO_INCREMENT PRIMARY KEY,
         full_name VARCHAR(100) NOT NULL,
-        password VARCHAR(100) NOT NULL
+        password_hash VARCHAR(255) NOT NULL
       )
     `);
 
@@ -145,17 +167,12 @@ setTimeout(async () => {
 // ==================== ROUTES ====================
 
 // Удалить платеж
-app.delete('/api/payments/:id', async (req, res) => {
+app.delete('/api/payments/:id', authenticateAdmin, async (req, res) => {
   let connection;
   try {
     const paymentId = req.params.id;
-    const token = req.headers.authorization;
     
     console.log('Попытка удаления платежа:', paymentId);
-    
-    if (!token || !token.includes('admin-token')) {
-      return res.status(403).json({ error: 'Доступ запрещен' });
-    }
 
     connection = await pool.getConnection();
     
@@ -191,17 +208,12 @@ app.delete('/api/payments/:id', async (req, res) => {
 });
 
 // Восстановить платеж
-app.post('/api/payments/:id/restore', async (req, res) => {
+app.post('/api/payments/:id/restore', authenticateAdmin, async (req, res) => {
   let connection;
   try {
     const paymentId = req.params.id;
-    const token = req.headers.authorization;
     
     console.log('Попытка восстановления платежа:', paymentId);
-    
-    if (!token || !token.includes('admin-token')) {
-      return res.status(403).json({ error: 'Доступ запрещен' });
-    }
 
     connection = await pool.getConnection();
     
@@ -282,10 +294,20 @@ app.post('/api/admin/login', async (req, res) => {
     if (rows.length > 0) {
       const admin = rows[0];
       
-      if (password === admin.password) {
+      // Проверяем хэш пароля
+      const isValidPassword = await bcrypt.compare(password, admin.password_hash);
+      
+      if (isValidPassword) {
+        // Генерируем JWT токен (лучше) или случайный токен
+        const token = jwt.sign(
+          { id: admin.id, role: 'admin' },
+          process.env.JWT_SECRET,
+          { expiresIn: '8h' }
+        );
+        
         return res.json({
           message: 'Успешный вход',
-          token: 'admin-token-' + admin.id,
+          token: token,
           user: {
             id: admin.id,
             full_name: admin.full_name,
@@ -352,15 +374,10 @@ app.get('/api/student/login/:studentId', async (req, res) => {
 });
 
 // Получить всех студентов (для админа)
-app.get('/api/students', async (req, res) => {
+app.get('/api/students', authenticateAdmin, async (req, res) => {
   let connection;
   try {
-    const token = req.headers.authorization;
-    
-    if (!token || !token.includes('admin-token')) {
-      return res.status(403).json({ error: 'Доступ запрещен' });
-    }
-
+    // Убираем проверку token - middleware уже сделал
     connection = await pool.getConnection();
     const [rows] = await connection.execute(`
       SELECT s.*,
@@ -383,10 +400,12 @@ app.get('/api/students/:id/payments', async (req, res) => {
   let connection;
   try {
     const studentId = req.params.id;
-    const token = req.headers.authorization;
     
-    if (!token) {
-      return res.status(401).json({ error: 'Требуется авторизация' });
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      // можно проверить, что это либо админ, либо владелец студента
+    } catch {
+      return res.status(403).json({ error: 'Недействительный токен' });
     }
 
     connection = await pool.getConnection();
@@ -408,15 +427,9 @@ app.get('/api/students/:id/payments', async (req, res) => {
 });
 
 // Добавить платеж (только для администратора)
-app.post('/api/payments', async (req, res) => {
+app.post('/api/payments', authenticateAdmin, async (req, res) => {
   let connection;
   try {
-    const token = req.headers.authorization;
-    
-    if (!token || !token.includes('admin-token')) {
-      return res.status(403).json({ error: 'Доступ запрещен' });
-    }
-
     const { student_id, payment_date, amount, description } = req.body;
     
     console.log('Данные для добавления платежа:', {
@@ -506,17 +519,12 @@ app.post('/api/payments', async (req, res) => {
 });
 
 // Удалить платеж
-app.delete('/api/payments/:id', async (req, res) => {
+app.delete('/api/payments/:id', authenticateAdmin, async (req, res) => {
   let connection;
   try {
     const paymentId = req.params.id;
-    const token = req.headers.authorization;
     
     console.log('Попытка удаления платежа:', paymentId);
-    
-    if (!token || !token.includes('admin-token')) {
-      return res.status(403).json({ error: 'Доступ запрещен' });
-    }
 
     connection = await pool.getConnection();
     
@@ -555,17 +563,12 @@ app.delete('/api/payments/:id', async (req, res) => {
 });
 
 // Восстановить платеж
-app.post('/api/payments/:id/restore', async (req, res) => {
+app.post('/api/payments/:id/restore', authenticateAdmin, async (req, res) => {
   let connection;
   try {
     const paymentId = req.params.id;
-    const token = req.headers.authorization;
     
     console.log('Попытка восстановления платежа:', paymentId);
-    
-    if (!token || !token.includes('admin-token')) {
-      return res.status(403).json({ error: 'Доступ запрещен' });
-    }
 
     connection = await pool.getConnection();
     
