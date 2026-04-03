@@ -264,16 +264,28 @@ app.get('/api/student/login/:studentId', async (req, res) => {
     if (rows.length > 0) {
       const student = rows[0];
       
+      // создаем JWT токен для студента
+      const token = jwt.sign(
+        { 
+          id: student.id, 
+          student_id: student.student_id,
+          full_name: student.full_name,
+          role: 'user' 
+        },
+        process.env.JWT_SECRET,
+        { expiresIn: '24h' }
+      );
+      
       return res.json({
         message: 'Успешный вход',
+        token: token,  // ← JWT токен, а не user-token-1
         user: {
           id: student.id,
           full_name: student.full_name,
           student_id: student.student_id,
           balance: parseFloat(student.balance) || 0,
           role: 'user'
-        },
-        token: 'user-token-' + student.id
+        }
       });
     } else {
       return res.status(404).json({ error: 'Ученик с таким ID не найден' });
@@ -326,35 +338,41 @@ app.get('/api/students/:id/payments', async (req, res) => {
     let decoded;
     try {
       decoded = jwt.verify(token, process.env.JWT_SECRET);
-    } catch {
+    } catch (error) {
       return res.status(403).json({ error: 'Недействительный токен' });
     }
     
     connection = await pool.getConnection();
     
-    // Админ видит все
+    // Проверяем права: админ видит всё, студент - только свои платежи
     if (decoded.role === 'admin') {
+      // Админ видит платежи любого студента
       const [rows] = await connection.execute(
-        `SELECT * FROM payments WHERE student_id = ? AND is_deleted = FALSE`,
+        `SELECT *, 
+         CASE WHEN is_deleted = TRUE THEN CONCAT(description, ' (УДАЛЕНО)') ELSE description END as display_description
+         FROM payments WHERE student_id = ? 
+         ORDER BY payment_date DESC, created_at DESC`,
         [studentId]
       );
       return res.json(rows);
     }
     
-    // Студент видит только свои
     if (decoded.role === 'user') {
-      // Нужно получить student_id из токена или проверить соответствие
+      // Студент видит только свои платежи
       const [student] = await connection.execute(
-        'SELECT id FROM students WHERE student_id = ?',
-        [decoded.student_id]
+        'SELECT id FROM students WHERE id = ?',
+        [decoded.id]
       );
       
       if (student[0]?.id != studentId) {
-        return res.status(403).json({ error: 'Доступ запрещен' });
+        return res.status(403).json({ error: 'Доступ запрещен: чужие платежи' });
       }
       
       const [rows] = await connection.execute(
-        `SELECT * FROM payments WHERE student_id = ? AND is_deleted = FALSE`,
+        `SELECT *, 
+         CASE WHEN is_deleted = TRUE THEN CONCAT(description, ' (УДАЛЕНО)') ELSE description END as display_description
+         FROM payments WHERE student_id = ? 
+         ORDER BY payment_date DESC, created_at DESC`,
         [studentId]
       );
       return res.json(rows);
@@ -363,7 +381,10 @@ app.get('/api/students/:id/payments', async (req, res) => {
     res.status(403).json({ error: 'Недостаточно прав' });
     
   } catch (error) {
+    console.error('Ошибка загрузки платежей:', error);
     res.status(500).json({ error: error.message });
+  } finally {
+    if (connection) connection.release();
   }
 });
 
